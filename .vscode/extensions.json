@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "ms-playwright.playwright",
+    "firsttris.vscode-jest-runner",
+    "msjsdiag.vscode-react-native",
+    "expo.vscode-expo-tools",
+    "sonarsource.sonarlint-vscode",
+    "snyk-security.snyk-vulnerability-scanner",
+    "eamodio.gitlens"
+  ]
+}

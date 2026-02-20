@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "EmployeeManagement",
+    "slug": "employee-management",
+    "scheme": "emportal",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

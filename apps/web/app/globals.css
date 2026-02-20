@@ -1,0 +1,148 @@
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(180deg, #eef4ff 0%, #f7f8fb 40%, #ffffff 100%);
+  color: #11223b;
+}
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #dce5f3;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(17, 34, 59, 0.06);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.input,
+.select,
+.button {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #c9d7ea;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.button {
+  background: #0f6ad8;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.button.secondary {
+  background: #ffffff;
+  color: #1f3d5f;
+  border: 1px solid #c9d7ea;
+}
+
+.button.danger {
+  background: #d63f3f;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 12px;
+  border-bottom: 1px solid #e6edf7;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.form {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #eef4ff;
+  color: #28528a;
+}
+
+.error {
+  color: #b11f1f;
+  font-size: 13px;
+}
+
+.muted {
+  color: #4f627b;
+}
+
+@media (max-width: 900px) {
+  .controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .formRow {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .controls {
+    grid-template-columns: 1fr;
+  }
+}
