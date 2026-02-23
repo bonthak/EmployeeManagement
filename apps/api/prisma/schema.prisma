@@ -18,6 +18,7 @@ model User {
   email        String    @unique
   passwordHash String
   role         UserRole
+  profileImage String?
   employee     Employee?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

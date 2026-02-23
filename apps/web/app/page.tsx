@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Employee, EmployeePayload, UserRole } from '@em/shared';
-import { authApi, employeeApi, type SessionState } from '../lib/employee-api';
+import { authApi, employeeApi, type SessionState, userApi } from '../lib/employee-api';
 import { useEmployeeUiStore } from '../store/employee-ui-store';
 
 const roleOptions: UserRole[] = ['admin', 'manager', 'employee'];
@@ -47,6 +48,9 @@ export default function HomePage() {
   const [loginError, setLoginError] = useState('');
   const [form, setForm] = useState<EmployeePayload>(emptyForm);
   const [formError, setFormError] = useState('');
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(sessionKey);
@@ -106,6 +110,27 @@ export default function HomePage() {
     },
   });
 
+  const uploadProfileImage = useMutation({
+    mutationFn: async (file: File) => {
+      const imageData = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ''));
+        reader.onerror = () => reject(new Error('Failed to read image'));
+        reader.readAsDataURL(file);
+      });
+      return userApi.uploadProfileImage(session!.token, imageData);
+    },
+    onSuccess: (user) => {
+      const nextSession: SessionState = { token: session!.token, user };
+      setSession(nextSession);
+      window.localStorage.setItem(sessionKey, JSON.stringify(nextSession));
+      setProfileError('');
+    },
+    onError: () => {
+      setProfileError('Could not upload image. Try a smaller file.');
+    },
+  });
+
   const canEdit = session?.user.role === 'admin' || session?.user.role === 'manager';
   const canDelete = session?.user.role === 'admin';
 
@@ -141,11 +166,34 @@ export default function HomePage() {
     });
   };
 
-  const onLogout = () => {
+  const onLogout = async () => {
+    if (session?.token) {
+      try {
+        await authApi.logout(session.token);
+      } catch {
+        // Ignore logout API failures and clear local session regardless.
+      }
+    }
     setSession(null);
+    setProfileMenuOpen(false);
     window.localStorage.removeItem(sessionKey);
     queryClient.removeQueries({ queryKey: ['employees'] });
   };
+
+  const onProfileFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !session) return;
+
+    if (!file.type.startsWith('image/')) {
+      setProfileError('Please choose a valid image file.');
+      return;
+    }
+
+    await uploadProfileImage.mutateAsync(file);
+    event.target.value = '';
+  };
+
+  const profileInitial = session?.user.email?.charAt(0).toUpperCase() ?? 'U';
 
   if (!session) {
     return (
@@ -188,11 +236,54 @@ export default function HomePage() {
             Logged in as {session.user.email} ({session.user.role})
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', position: 'relative' }}>
           <span className="badge">Total: {employeesQuery.data?.total ?? 0}</span>
-          <button type="button" className="button secondary" onClick={onLogout}>
-            Logout
+          <button
+            type="button"
+            className="profileTrigger"
+            aria-label="Open profile menu"
+            onClick={() => setProfileMenuOpen((prev) => !prev)}
+          >
+            {session.user.profileImage ? (
+              <Image src={session.user.profileImage} alt="Profile" className="profileAvatarImage" width={44} height={44} />
+            ) : (
+              <span className="profileAvatarInitial">{profileInitial}</span>
+            )}
           </button>
+          {profileMenuOpen ? (
+            <div className="profileMenu">
+              <div className="profilePreview">
+                {session.user.profileImage ? (
+                  <Image
+                    src={session.user.profileImage}
+                    alt="Profile preview"
+                    className="profilePreviewImage"
+                    width={48}
+                    height={48}
+                  />
+                ) : (
+                  <div className="profilePreviewPlaceholder">{profileInitial}</div>
+                )}
+                <div>
+                  <div style={{ fontWeight: 600 }}>{session.user.email}</div>
+                  <div className="muted">{session.user.role}</div>
+                </div>
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onProfileFileChange} />
+              {profileError ? <div className="error">{profileError}</div> : null}
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadProfileImage.isPending}
+              >
+                {uploadProfileImage.isPending ? 'Uploading...' : 'Upload image'}
+              </button>
+              <button type="button" className="button danger" onClick={onLogout}>
+                Sign out
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 

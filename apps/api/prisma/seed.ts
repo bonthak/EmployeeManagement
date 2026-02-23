@@ -43,9 +43,9 @@ async function main() {
       firstName: 'Alex',
       lastName: 'Johnson',
       email: 'alex.johnson@company.com',
-      role: 'manager',
+      role: 'employee',
       department: 'Engineering',
-      userId: manager.id,
+      userId: employeeUser.id,
     },
   });
 
@@ -69,11 +69,35 @@ async function main() {
       firstName: 'Daniel',
       lastName: 'Brooks',
       email: 'daniel.brooks@company.com',
-      role: 'admin',
+      role: 'employee',
       department: 'Operations',
-      userId: admin.id,
+      userId: employeeUser.id,
     },
   });
+
+  const employees = await prisma.employee.findMany({
+    select: { id: true, email: true, role: true },
+  });
+
+  for (const employee of employees) {
+    const employeeUser = await prisma.user.upsert({
+      where: { email: employee.email },
+      update: {
+        role: employee.role,
+        passwordHash,
+      },
+      create: {
+        email: employee.email,
+        role: employee.role,
+        passwordHash,
+      },
+    });
+
+    await prisma.employee.update({
+      where: { id: employee.id },
+      data: { userId: employeeUser.id },
+    });
+  }
 }
 
 main()

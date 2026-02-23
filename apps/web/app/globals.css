@@ -127,6 +127,73 @@ main {
   color: #4f627b;
 }
 
+.profileTrigger {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid #c9d7ea;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.profileAvatarImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profileAvatarInitial {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f3d5f;
+}
+
+.profileMenu {
+  position: absolute;
+  top: 54px;
+  right: 0;
+  width: 280px;
+  padding: 12px;
+  border: 1px solid #dce5f3;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(17, 34, 59, 0.16);
+  display: grid;
+  gap: 10px;
+  z-index: 20;
+}
+
+.profilePreview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profilePreviewImage,
+.profilePreviewPlaceholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  border: 1px solid #dce5f3;
+}
+
+.profilePreviewImage {
+  object-fit: cover;
+}
+
+.profilePreviewPlaceholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef4ff;
+  color: #28528a;
+  font-weight: 700;
+}
+
 @media (max-width: 900px) {
   .controls {
     grid-template-columns: 1fr 1fr;

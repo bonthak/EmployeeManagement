@@ -14,7 +14,8 @@ const jwtSecret = process.env.JWT_SECRET ?? 'super-secret-change-me';
 
 app.use(helmet());
 app.use(cors({ origin: ['http://localhost:3000', 'http://localhost:8081'] }));
-app.use(express.json());
+app.use(express.json({ limit: '8mb' }));
+app.use(express.urlencoded({ extended: true, limit: '8mb' }));
 
 const employeePayloadSchema = z.object({
   firstName: z.string().trim().min(1),
@@ -29,6 +30,12 @@ const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
 });
+
+const profileImageSchema = z.object({
+  profileImage: z.string().min(1).max(2_000_000),
+});
+
+const DEFAULT_EMPLOYEE_PASSWORD_HASH = '$2b$10$/tnN/KbHtBrRbeQN6ds0QuPD72p.ZhiIKXjMgEn9EUF1Sd.dWPTuW';
 
 type RequestUser = AuthUser;
 
@@ -74,6 +81,7 @@ const authRequired = (req: AuthRequest, res: Response, next: NextFunction): void
       email: payload.email,
       role: payload.role,
       employeeId: payload.employeeId ?? null,
+      profileImage: payload.profileImage ?? null,
     };
     next();
   } catch {
@@ -127,6 +135,7 @@ app.post('/api/auth/login', async (req, res) => {
     email: user.email,
     role: user.role,
     employeeId: user.employee?.id ?? null,
+    profileImage: user.profileImage ?? null,
   };
 
   const response: LoginResponse = {
@@ -135,6 +144,36 @@ app.post('/api/auth/login', async (req, res) => {
   };
 
   return res.json(response);
+});
+
+app.post('/api/auth/logout', authRequired, (_req, res) => {
+  return res.status(204).send();
+});
+
+app.patch('/api/users/me/profile-image', authRequired, async (req: AuthRequest, res) => {
+  const parsed = profileImageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+
+  try {
+    const updated = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { profileImage: parsed.data.profileImage },
+    });
+
+    const authUser: RequestUser = {
+      id: updated.id,
+      email: updated.email,
+      role: updated.role,
+      employeeId: req.user?.employeeId ?? null,
+      profileImage: updated.profileImage ?? null,
+    };
+
+    return res.json({ user: authUser });
+  } catch {
+    return res.status(404).json({ error: 'User not found' });
+  }
 });
 
 app.get('/api/employees', authRequired, async (req: AuthRequest, res) => {
@@ -202,20 +241,30 @@ app.post('/api/employees', authRequired, requireRole(['admin', 'manager']), asyn
   const payload: EmployeePayload = parsed.data;
 
   try {
-    const created = await prisma.employee.create({
-      data: {
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        email: payload.email,
-        role: payload.role,
-        department: payload.department,
-        userId: payload.userId ?? null,
-      },
+    const created = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: payload.email.toLowerCase(),
+          role: payload.role,
+          passwordHash: DEFAULT_EMPLOYEE_PASSWORD_HASH,
+        },
+      });
+
+      return tx.employee.create({
+        data: {
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          email: payload.email.toLowerCase(),
+          role: payload.role,
+          department: payload.department,
+          userId: user.id,
+        },
+      });
     });
 
     return res.status(201).json(toEmployee(created));
   } catch {
-    return res.status(409).json({ error: 'Employee email already exists' });
+    return res.status(409).json({ error: 'User or employee email already exists' });
   }
 });
 
@@ -226,18 +275,51 @@ app.put('/api/employees/:id', authRequired, requireRole(['admin', 'manager']), a
   }
 
   const payload: EmployeePayload = parsed.data;
+  const employeeId = String(req.params.id);
+  const normalizedEmail = payload.email.toLowerCase();
 
   try {
-    const updated = await prisma.employee.update({
-      where: { id: String(req.params.id) },
-      data: {
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        email: payload.email,
-        role: payload.role,
-        department: payload.department,
-        userId: payload.userId ?? null,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.employee.findUnique({
+        where: { id: employeeId },
+        select: { id: true, userId: true },
+      });
+
+      if (!existing) {
+        throw new Error('NOT_FOUND');
+      }
+
+      let userId = existing.userId;
+      if (userId) {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            email: normalizedEmail,
+            role: payload.role,
+          },
+        });
+      } else {
+        const createdUser = await tx.user.create({
+          data: {
+            email: normalizedEmail,
+            role: payload.role,
+            passwordHash: DEFAULT_EMPLOYEE_PASSWORD_HASH,
+          },
+        });
+        userId = createdUser.id;
+      }
+
+      return tx.employee.update({
+        where: { id: employeeId },
+        data: {
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          email: normalizedEmail,
+          role: payload.role,
+          department: payload.department,
+          userId,
+        },
+      });
     });
 
     return res.json(toEmployee(updated));
@@ -258,4 +340,3 @@ app.delete('/api/employees/:id', authRequired, requireRole(['admin']), async (re
 app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`);
 });
-

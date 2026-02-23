@@ -51,6 +51,13 @@ export const authApi = {
 
     return handleResponse<LoginResponse>(response);
   },
+  logout: async (token: string): Promise<void> => {
+    const response = await fetch(`${API_BASE}/api/auth/logout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return handleResponse<void>(response);
+  },
 };
 
 const withAuthHeaders = (token: string): HeadersInit => ({
@@ -94,3 +101,15 @@ export interface SessionState {
   token: string;
   user: AuthUser;
 }
+
+export const userApi = {
+  uploadProfileImage: async (token: string, profileImage: string): Promise<AuthUser> => {
+    const response = await fetch(`${API_BASE}/api/users/me/profile-image`, {
+      method: 'PATCH',
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ profileImage }),
+    });
+    const payload = await handleResponse<{ user: AuthUser }>(response);
+    return payload.user;
+  },
+};

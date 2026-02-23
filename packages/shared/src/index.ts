@@ -25,6 +25,7 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   employeeId?: string | null;
+  profileImage?: string | null;
 }
 
 export interface LoginRequest {
