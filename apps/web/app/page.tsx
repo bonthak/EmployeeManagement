@@ -64,6 +64,7 @@ export default function HomePage() {
   const [profileError, setProfileError] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const profileContainerRef = useRef<HTMLDivElement | null>(null);
+  const employeeFormSectionRef = useRef<HTMLElement | null>(null);
 
   const clearBrowserState = async () => {
     queryClient.clear();
@@ -254,6 +255,11 @@ export default function HomePage() {
       userId: employee.userId ?? null,
     });
   };
+
+  useEffect(() => {
+    if (!showEmployeeForm || !employeeFormSectionRef.current) return;
+    employeeFormSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showEmployeeForm, editingEmployeeId]);
 
   const onLogout = async () => {
     if (session?.token) {
@@ -458,7 +464,7 @@ export default function HomePage() {
 
       <div className="grid" style={{ marginTop: 16 }}>
         {canEdit && showEmployeeForm ? (
-          <section className="card">
+          <section ref={employeeFormSectionRef} className="card">
             <form className="form" onSubmit={submitForm}>
               <h2 style={{ margin: 0 }}>{editingEmployeeId ? 'Edit Employee' : 'Add Employee'}</h2>
               <div className="formRow">
