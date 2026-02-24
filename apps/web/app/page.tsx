@@ -56,6 +56,9 @@ export default function HomePage() {
   const [loginInfo, setLoginInfo] = useState('');
   const [form, setForm] = useState<EmployeePayload>(emptyForm);
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
+  const [nameSortOrder, setNameSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [recentlyUpdatedEmployeeId, setRecentlyUpdatedEmployeeId] = useState<string | null>(null);
+  const [pendingScrollEmployeeId, setPendingScrollEmployeeId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [showChangePasswordScreen, setShowChangePasswordScreen] = useState(false);
@@ -67,6 +70,8 @@ export default function HomePage() {
   const employeeFormSectionRef = useRef<HTMLElement | null>(null);
 
   const clearBrowserState = async () => {
+    await queryClient.cancelQueries();
+    queryClient.removeQueries();
     queryClient.clear();
 
     window.localStorage.removeItem(sessionKey);
@@ -82,11 +87,42 @@ export default function HomePage() {
       const name = (eqPos > -1 ? cookie.slice(0, eqPos) : cookie).trim();
       if (!name) continue;
       document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
+      document.cookie = `${name}=;max-age=0;path=/`;
     }
 
     if ('caches' in window) {
       const cacheKeys = await window.caches.keys();
       await Promise.all(cacheKeys.map((key) => window.caches.delete(key)));
+    }
+
+    if ('indexedDB' in window) {
+      const idb = window.indexedDB as IDBFactory & {
+        databases?: () => Promise<Array<{ name?: string }>>;
+      };
+
+      if (idb.databases) {
+        const databases = await idb.databases();
+        await Promise.all(
+          databases
+            .map((db) => db.name)
+            .filter((name): name is string => Boolean(name))
+            .map(
+              (name) =>
+                new Promise<void>((resolve) => {
+                  const request = window.indexedDB.deleteDatabase(name);
+                  request.onsuccess = () => resolve();
+                  request.onerror = () => resolve();
+                  request.onblocked = () => resolve();
+                }),
+            ),
+        );
+      }
+    }
+
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
     }
   };
 
@@ -146,9 +182,16 @@ export default function HomePage() {
 
   const createEmployee = useMutation({
     mutationFn: (payload: EmployeePayload) => employeeApi.create(session!.token, payload),
-    onSuccess: async () => {
+    onSuccess: async (createdEmployee) => {
       setForm(emptyForm);
       setFormError('');
+      setRecentlyUpdatedEmployeeId(createdEmployee.id);
+      setPendingScrollEmployeeId(createdEmployee.id);
+      const createdEmployeePage = await findEmployeePage(createdEmployee.id);
+      setQ('');
+      setRole('');
+      setDepartment('');
+      setPage(createdEmployeePage ?? 1);
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
     },
   });
@@ -156,10 +199,15 @@ export default function HomePage() {
   const updateEmployee = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: EmployeePayload }) =>
       employeeApi.update(session!.token, id, payload),
-    onSuccess: async () => {
+    onSuccess: async (updatedEmployee) => {
       clearEditing();
       setForm(emptyForm);
       setFormError('');
+      setRecentlyUpdatedEmployeeId(updatedEmployee.id);
+      setPendingScrollEmployeeId(updatedEmployee.id);
+      if (!canCreateEmployee) {
+        setShowEmployeeForm(false);
+      }
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
     },
   });
@@ -222,6 +270,8 @@ export default function HomePage() {
   const canEdit = session?.user.role === 'admin' || session?.user.role === 'manager';
   const canDelete = session?.user.role === 'admin';
   const isAdmin = session?.user.role === 'admin';
+  const canCreateEmployee = isAdmin;
+  const showPaginationControls = session?.user.role !== 'employee';
 
   const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -261,12 +311,32 @@ export default function HomePage() {
     employeeFormSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [showEmployeeForm, editingEmployeeId]);
 
+  useEffect(() => {
+    if (!recentlyUpdatedEmployeeId) return;
+    const timer = window.setTimeout(() => setRecentlyUpdatedEmployeeId(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [recentlyUpdatedEmployeeId]);
+
+  useEffect(() => {
+    if (!pendingScrollEmployeeId || !employeesQuery.data) return;
+
+    const row = document.querySelector<HTMLTableRowElement>(
+      `[data-employee-id="${pendingScrollEmployeeId}"]`,
+    );
+
+    if (!row) return;
+
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setPendingScrollEmployeeId(null);
+  }, [pendingScrollEmployeeId, employeesQuery.data]);
+
   const onLogout = async () => {
     if (session?.token) {
       try {
         await authApi.logout(session.token);
       } catch {
-        // Ignore logout API failures and clear local session regardless.
+        setProfileError('Sign out failed. Please try again.');
+        return;
       }
     }
     setSession(null);
@@ -329,7 +399,47 @@ export default function HomePage() {
   const headerTitle = session ? portalTitle : 'Employee Portal';
   const hasEmployeeRecord = Boolean(session?.user.employeeId);
 
-  const rows = employeesQuery.data?.data ?? [];
+  const findEmployeePage = async (employeeId: string): Promise<number | null> => {
+    if (!session?.token) return null;
+
+    const firstPage = await employeeApi.list(session.token, {
+      q: '',
+      role: '',
+      department: '',
+      page: 1,
+      pageSize,
+    });
+
+    if (firstPage.data.some((item) => item.id === employeeId)) {
+      return 1;
+    }
+
+    for (let currentPage = 2; currentPage <= firstPage.totalPages; currentPage += 1) {
+      const response = await employeeApi.list(session.token, {
+        q: '',
+        role: '',
+        department: '',
+        page: currentPage,
+        pageSize,
+      });
+
+      if (response.data.some((item) => item.id === employeeId)) {
+        return currentPage;
+      }
+    }
+
+    return null;
+  };
+
+  const rows = useMemo(() => {
+    const baseRows = employeesQuery.data?.data ?? [];
+    return [...baseRows].sort((a, b) => {
+      const left = `${a.firstName} ${a.lastName}`.trim().toLowerCase();
+      const right = `${b.firstName} ${b.lastName}`.trim().toLowerCase();
+      const compared = left.localeCompare(right);
+      return nameSortOrder === 'asc' ? compared : -compared;
+    });
+  }, [employeesQuery.data?.data, nameSortOrder]);
 
   const bodyContent = !hasHydrated ? (
     <div className="card form appBodyCard">
@@ -463,7 +573,7 @@ export default function HomePage() {
       </section>
 
       <div className="grid" style={{ marginTop: 16 }}>
-        {canEdit && showEmployeeForm ? (
+        {canEdit && showEmployeeForm && (canCreateEmployee || Boolean(editingEmployeeId)) ? (
           <section ref={employeeFormSectionRef} className="card">
             <form className="form" onSubmit={submitForm}>
               <h2 style={{ margin: 0 }}>{editingEmployeeId ? 'Edit Employee' : 'Add Employee'}</h2>
@@ -547,7 +657,27 @@ export default function HomePage() {
           <table className="table" aria-label="Employees list">
             <thead>
               <tr>
-                <th>Name</th>
+                <th>
+                  <div className="tableHeadSort">
+                    <button
+                      type="button"
+                      className={`sortIconButton ${nameSortOrder === 'desc' ? 'active' : ''}`}
+                      aria-label="Sort name descending"
+                      onClick={() => setNameSortOrder('desc')}
+                    >
+                      <Image src="/art/sort-desc.svg" alt="" width={14} height={14} />
+                    </button>
+                    <span>Name</span>
+                    <button
+                      type="button"
+                      className={`sortIconButton ${nameSortOrder === 'asc' ? 'active' : ''}`}
+                      aria-label="Sort name ascending"
+                      onClick={() => setNameSortOrder('asc')}
+                    >
+                      <Image src="/art/sort-asc.svg" alt="" width={14} height={14} />
+                    </button>
+                  </div>
+                </th>
                 <th>Email</th>
                 <th>Department</th>
                 <th>Role</th>
@@ -561,7 +691,11 @@ export default function HomePage() {
                 </tr>
               ) : null}
               {rows.map((employee) => (
-                <tr key={employee.id}>
+                <tr
+                  key={employee.id}
+                  data-employee-id={employee.id}
+                  className={employee.id === recentlyUpdatedEmployeeId ? 'rowUpdated' : undefined}
+                >
                   <td>
                     {employee.firstName} {employee.lastName}
                   </td>
@@ -612,49 +746,51 @@ export default function HomePage() {
             </tbody>
           </table>
 
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: 12,
-              gap: 10,
-            }}
-          >
-            <div className="muted">
-              Page {employeesQuery.data?.page ?? page} of {employeesQuery.data?.totalPages ?? 1}
+          {showPaginationControls ? (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: 12,
+                gap: 10,
+              }}
+            >
+              <div className="muted">
+                Page {employeesQuery.data?.page ?? page} of {employeesQuery.data?.totalPages ?? 1}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <select
+                  className="select"
+                  style={{ width: 90 }}
+                  value={pageSize}
+                  onChange={(event) => setPageSize(Number(event.target.value))}
+                >
+                  {[5, 10, 20].map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() => setPage(Math.max(1, page - 1))}
+                  disabled={page <= 1}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() => setPage(page + 1)}
+                  disabled={page >= (employeesQuery.data?.totalPages ?? 1)}
+                >
+                  Next
+                </button>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <select
-                className="select"
-                style={{ width: 90 }}
-                value={pageSize}
-                onChange={(event) => setPageSize(Number(event.target.value))}
-              >
-                {[5, 10, 20].map((size) => (
-                  <option key={size} value={size}>
-                    {size}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => setPage(Math.max(1, page - 1))}
-                disabled={page <= 1}
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => setPage(page + 1)}
-                disabled={page >= (employeesQuery.data?.totalPages ?? 1)}
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          ) : null}
         </section>
       </div>
     </>

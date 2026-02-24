@@ -282,8 +282,36 @@ h3 {
   letter-spacing: 0.05em;
 }
 
+.tableHeadSort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sortIconButton {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #b8d7ec;
+  border-radius: 999px;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.sortIconButton.active {
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+}
+
 .table tbody tr:hover td {
   background: rgba(236, 253, 255, 0.55);
+}
+
+.table tbody tr.rowUpdated td {
+  background: linear-gradient(90deg, rgba(125, 211, 252, 0.32), rgba(186, 230, 253, 0.22));
+  animation: row-updated-fade 2.6s ease forwards;
 }
 
 .form {
@@ -426,6 +454,15 @@ h3 {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes row-updated-fade {
+  0% {
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.38), rgba(125, 211, 252, 0.28));
+  }
+  100% {
+    background: transparent;
   }
 }
 
