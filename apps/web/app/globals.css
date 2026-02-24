@@ -20,6 +20,8 @@ html,
 body {
   margin: 0;
   padding: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -29,7 +31,9 @@ body {
     radial-gradient(circle at 92% 4%, rgba(56, 189, 248, 0.22), transparent 34%),
     linear-gradient(155deg, var(--bg-0), var(--bg-1) 42%, var(--bg-2));
   color: var(--text-1);
-  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: hidden;
 }
 
 main {
@@ -37,6 +41,132 @@ main {
   margin: 0 auto;
   padding: 26px 18px 44px;
   animation: rise-in 360ms ease;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.appShell {
+  display: grid;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.appHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  background: linear-gradient(100deg, rgba(226, 250, 255, 0.9), rgba(241, 245, 249, 0.88));
+  position: relative;
+  z-index: 40;
+  overflow: visible;
+  width: 100%;
+  min-width: 0;
+}
+
+.appHeaderActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  position: relative;
+}
+
+.appLayout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+.appNav {
+  min-height: 0;
+  padding: 18px 16px;
+  overflow: hidden;
+  height: 100%;
+}
+
+.navMenu {
+  display: grid;
+  gap: 8px;
+}
+
+.navItem {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #b8d7ec;
+  background: #ffffff;
+  color: #0f4c70;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.appBody {
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.appBodyContent {
+  min-height: fit-content;
+}
+
+.appBodyCard {
+  max-width: 480px;
+  margin: 16px auto;
+}
+
+.appBodyWide {
+  max-width: 560px;
+}
+
+.appFooter {
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  overflow: visible;
+  margin-top: 2px;
+  position: relative;
+  bottom: auto;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.appFooter > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.appLogoMark {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: #f8fafc;
+  background: linear-gradient(135deg, #0284c7, #0e7490);
 }
 
 h1,
@@ -226,7 +356,7 @@ h3 {
   box-shadow: 0 18px 34px rgba(2, 8, 23, 0.18);
   display: grid;
   gap: 10px;
-  z-index: 20;
+  z-index: 120;
 }
 
 .profilePreview {
@@ -270,6 +400,11 @@ h3 {
   display: block;
 }
 
+.authIllustrationSignIn img {
+  max-height: 70px;
+  object-fit: contain;
+}
+
 .emptyState {
   display: grid;
   place-items: center;
@@ -295,6 +430,19 @@ h3 {
 }
 
 @media (max-width: 900px) {
+  .appLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .appNav {
+    min-height: 120px;
+    overflow: hidden;
+  }
+
+  .appBody {
+    min-height: auto;
+  }
+
   .controls {
     grid-template-columns: 1fr 1fr;
   }
@@ -312,6 +460,17 @@ h3 {
 @media (max-width: 640px) {
   main {
     padding: 16px 12px 28px;
+    height: 100dvh;
+  }
+
+  .appHeader {
+    padding: 16px;
+    flex-direction: column;
+  }
+
+  .appFooter {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .header {
@@ -320,5 +479,9 @@ h3 {
 
   .controls {
     grid-template-columns: 1fr;
+  }
+
+  .authIllustrationSignIn img {
+    max-height: 130px;
   }
 }

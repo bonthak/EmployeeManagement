@@ -55,6 +55,7 @@ export default function HomePage() {
   const [loginError, setLoginError] = useState('');
   const [loginInfo, setLoginInfo] = useState('');
   const [form, setForm] = useState<EmployeePayload>(emptyForm);
+  const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [formError, setFormError] = useState('');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [showChangePasswordScreen, setShowChangePasswordScreen] = useState(false);
@@ -63,6 +64,30 @@ export default function HomePage() {
   const [profileError, setProfileError] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const profileContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const clearBrowserState = async () => {
+    queryClient.clear();
+
+    window.localStorage.removeItem(sessionKey);
+    window.sessionStorage.clear();
+
+    if (window.localStorage.length > 0) {
+      window.localStorage.clear();
+    }
+
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+      const eqPos = cookie.indexOf('=');
+      const name = (eqPos > -1 ? cookie.slice(0, eqPos) : cookie).trim();
+      if (!name) continue;
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+    }
+
+    if ('caches' in window) {
+      const cacheKeys = await window.caches.keys();
+      await Promise.all(cacheKeys.map((key) => window.caches.delete(key)));
+    }
+  };
 
   useEffect(() => {
     setHasHydrated(true);
@@ -93,7 +118,10 @@ export default function HomePage() {
     };
   }, [profileMenuOpen]);
 
-  const filters = useMemo(() => ({ q, role, department, page, pageSize }), [q, role, department, page, pageSize]);
+  const filters = useMemo(
+    () => ({ q, role, department, page, pageSize }),
+    [q, role, department, page, pageSize],
+  );
 
   const employeesQuery = useQuery({
     queryKey: ['employees', session?.token, filters],
@@ -181,16 +209,18 @@ export default function HomePage() {
       setChangePasswordError('');
       setLoginError('');
       setLoginInfo('Password changed successfully. Please sign in again.');
-      window.localStorage.removeItem(sessionKey);
-      queryClient.removeQueries({ queryKey: ['employees'] });
+      await clearBrowserState();
     },
     onError: () => {
-      setChangePasswordError('Failed to change password. Check your current password and try again.');
+      setChangePasswordError(
+        'Failed to change password. Check your current password and try again.',
+      );
     },
   });
 
   const canEdit = session?.user.role === 'admin' || session?.user.role === 'manager';
   const canDelete = session?.user.role === 'admin';
+  const isAdmin = session?.user.role === 'admin';
 
   const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -213,6 +243,7 @@ export default function HomePage() {
   };
 
   const onEdit = (employee: Employee) => {
+    setShowEmployeeForm(true);
     startEditing(employee.id);
     setForm({
       firstName: employee.firstName,
@@ -237,15 +268,18 @@ export default function HomePage() {
     setShowChangePasswordScreen(false);
     setChangePasswordForm(changePasswordDefaults);
     setChangePasswordError('');
-    window.localStorage.removeItem(sessionKey);
-    queryClient.removeQueries({ queryKey: ['employees'] });
+    await clearBrowserState();
   };
 
   const onSubmitChangePassword = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setChangePasswordError('');
 
-    if (!changePasswordForm.currentPassword || !changePasswordForm.newPassword || !changePasswordForm.confirmPassword) {
+    if (
+      !changePasswordForm.currentPassword ||
+      !changePasswordForm.newPassword ||
+      !changePasswordForm.confirmPassword
+    ) {
       setChangePasswordError('All password fields are required.');
       return;
     }
@@ -286,203 +320,112 @@ export default function HomePage() {
 
   const profileInitial = session?.user.email?.charAt(0).toUpperCase() ?? 'U';
   const portalTitle = session?.user.employeeId ? 'Employee Portal' : 'Employee Management Portal';
+  const headerTitle = session ? portalTitle : 'Employee Portal';
   const hasEmployeeRecord = Boolean(session?.user.employeeId);
-
-  if (!hasHydrated) {
-    return (
-      <main>
-        <div className="card form" style={{ maxWidth: 460, margin: '32px auto' }}>
-          <h1 style={{ margin: 0 }}>Employee Portal Login</h1>
-          <p className="muted" style={{ margin: '4px 0 0' }}>
-            Loading...
-          </p>
-        </div>
-      </main>
-    );
-  }
-
-  if (!session) {
-    return (
-      <main>
-        <div className="card form" style={{ maxWidth: 460, margin: '32px auto' }}>
-          <div className="authIllustration" aria-hidden="true">
-            <Image src="/art/login-hero.svg" alt="" width={640} height={320} priority />
-          </div>
-          <h1 style={{ margin: 0 }}>Employee Portal Login</h1>
-          <p className="muted" style={{ margin: '4px 0 0' }}>
-            Use seeded credentials configured for this environment.
-          </p>
-          <input
-            className="input"
-            value={loginForm.email}
-            onChange={(event) => setLoginForm((prev) => ({ ...prev, email: event.target.value }))}
-            placeholder="Email"
-          />
-          <input
-            className="input"
-            type="password"
-            value={loginForm.password}
-            onChange={(event) => setLoginForm((prev) => ({ ...prev, password: event.target.value }))}
-            placeholder="Password"
-          />
-          {loginInfo ? <div className="muted">{loginInfo}</div> : null}
-          {loginError ? <div className="error">{loginError}</div> : null}
-          <button type="button" className="button" onClick={() => loginMutation.mutate()}>
-            {loginMutation.isPending ? 'Signing in...' : 'Sign in'}
-          </button>
-        </div>
-      </main>
-    );
-  }
-
-  if (showChangePasswordScreen) {
-    return (
-      <main>
-        <div className="card form" style={{ maxWidth: 520, margin: '32px auto' }}>
-          <div className="authIllustration" aria-hidden="true">
-            <Image src="/art/login-hero.svg" alt="" width={640} height={320} />
-          </div>
-          <h1 style={{ margin: 0 }}>Change Password</h1>
-          <p className="muted" style={{ margin: '4px 0 0' }}>
-            Update your password to continue using the portal.
-          </p>
-          <form className="form" style={{ padding: 0 }} onSubmit={onSubmitChangePassword}>
-            <input
-              className="input"
-              type="password"
-              placeholder="Current password"
-              value={changePasswordForm.currentPassword}
-              onChange={(event) =>
-                setChangePasswordForm((prev) => ({
-                  ...prev,
-                  currentPassword: event.target.value,
-                }))
-              }
-            />
-            <input
-              className="input"
-              type="password"
-              placeholder="New password"
-              value={changePasswordForm.newPassword}
-              onChange={(event) =>
-                setChangePasswordForm((prev) => ({
-                  ...prev,
-                  newPassword: event.target.value,
-                }))
-              }
-            />
-            <input
-              className="input"
-              type="password"
-              placeholder="Confirm new password"
-              value={changePasswordForm.confirmPassword}
-              onChange={(event) =>
-                setChangePasswordForm((prev) => ({
-                  ...prev,
-                  confirmPassword: event.target.value,
-                }))
-              }
-            />
-            {changePasswordError ? <div className="error">{changePasswordError}</div> : null}
-            <div className="formRow">
-              <button type="submit" className="button" disabled={changePassword.isPending}>
-                {changePassword.isPending ? 'Updating...' : 'Update password'}
-              </button>
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => {
-                  setShowChangePasswordScreen(false);
-                  setChangePasswordError('');
-                }}
-              >
-                Back
-              </button>
-            </div>
-          </form>
-        </div>
-      </main>
-    );
-  }
 
   const rows = employeesQuery.data?.data ?? [];
 
-  return (
-    <main>
-      <div className="header">
-        <div>
-          <h1 style={{ margin: 0 }}>{portalTitle}</h1>
-          <p className="muted" style={{ marginTop: 8 }}>
-            Logged in as {session.user.email} ({session.user.role})
-          </p>
-        </div>
-        <div ref={profileContainerRef} style={{ display: 'flex', gap: 10, alignItems: 'center', position: 'relative' }}>
-          <span className="badge">Total: {employeesQuery.data?.total ?? 0}</span>
+  const bodyContent = !hasHydrated ? (
+    <div className="card form appBodyCard">
+      <h1 style={{ margin: 0 }}>Employee Portal</h1>
+      <p className="muted" style={{ margin: '4px 0 0' }}>
+        Loading...
+      </p>
+    </div>
+  ) : !session ? (
+    <div className="card form appBodyCard">
+      <div className="authIllustration authIllustrationSignIn" aria-hidden="true">
+        <Image src="/art/login-hero.svg" alt="" width={640} height={320} priority />
+      </div>
+      <h1 style={{ margin: 0 }}>Employee Portal Signin</h1>
+      <p className="muted" style={{ margin: '4px 0 0' }}>
+        Use seeded credentials configured for this environment.
+      </p>
+      <input
+        className="input"
+        value={loginForm.email}
+        onChange={(event) => setLoginForm((prev) => ({ ...prev, email: event.target.value }))}
+        placeholder="Email"
+      />
+      <input
+        className="input"
+        type="password"
+        value={loginForm.password}
+        onChange={(event) => setLoginForm((prev) => ({ ...prev, password: event.target.value }))}
+        placeholder="Password"
+      />
+      {loginInfo ? <div className="muted">{loginInfo}</div> : null}
+      {loginError ? <div className="error">{loginError}</div> : null}
+      <button type="button" className="button" onClick={() => loginMutation.mutate()}>
+        {loginMutation.isPending ? 'Signing in...' : 'Sign in'}
+      </button>
+    </div>
+  ) : showChangePasswordScreen ? (
+    <div className="card form appBodyCard appBodyWide">
+      <div className="authIllustration" aria-hidden="true">
+        <Image src="/art/login-hero.svg" alt="" width={640} height={320} />
+      </div>
+      <h1 style={{ margin: 0 }}>Change Password</h1>
+      <p className="muted" style={{ margin: '4px 0 0' }}>
+        Update your password to continue using the portal.
+      </p>
+      <form className="form" style={{ padding: 0 }} onSubmit={onSubmitChangePassword}>
+        <input
+          className="input"
+          type="password"
+          placeholder="Current password"
+          value={changePasswordForm.currentPassword}
+          onChange={(event) =>
+            setChangePasswordForm((prev) => ({
+              ...prev,
+              currentPassword: event.target.value,
+            }))
+          }
+        />
+        <input
+          className="input"
+          type="password"
+          placeholder="New password"
+          value={changePasswordForm.newPassword}
+          onChange={(event) =>
+            setChangePasswordForm((prev) => ({
+              ...prev,
+              newPassword: event.target.value,
+            }))
+          }
+        />
+        <input
+          className="input"
+          type="password"
+          placeholder="Confirm new password"
+          value={changePasswordForm.confirmPassword}
+          onChange={(event) =>
+            setChangePasswordForm((prev) => ({
+              ...prev,
+              confirmPassword: event.target.value,
+            }))
+          }
+        />
+        {changePasswordError ? <div className="error">{changePasswordError}</div> : null}
+        <div className="formRow">
+          <button type="submit" className="button" disabled={changePassword.isPending}>
+            {changePassword.isPending ? 'Updating...' : 'Update password'}
+          </button>
           <button
             type="button"
-            className="profileTrigger"
-            aria-label="Open profile menu"
-            onClick={() => setProfileMenuOpen((prev) => !prev)}
+            className="button secondary"
+            onClick={() => {
+              setShowChangePasswordScreen(false);
+              setChangePasswordError('');
+            }}
           >
-            {session.user.profileImage ? (
-              <Image src={session.user.profileImage} alt="Profile" className="profileAvatarImage" width={44} height={44} />
-            ) : (
-              <span className="profileAvatarInitial">{profileInitial}</span>
-            )}
+            Back
           </button>
-          {profileMenuOpen ? (
-            <div className="profileMenu">
-              <div className="profilePreview">
-                {session.user.profileImage ? (
-                  <Image
-                    src={session.user.profileImage}
-                    alt="Profile preview"
-                    className="profilePreviewImage"
-                    width={48}
-                    height={48}
-                  />
-                ) : (
-                  <div className="profilePreviewPlaceholder">{profileInitial}</div>
-                )}
-                <div>
-                  <div style={{ fontWeight: 600 }}>{session.user.email}</div>
-                  <div className="muted">{session.user.role}</div>
-                </div>
-              </div>
-              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onProfileFileChange} />
-              {hasEmployeeRecord ? (
-                <>
-                  {profileError ? <div className="error">{profileError}</div> : null}
-                  <button
-                    type="button"
-                    className="button secondary"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadProfileImage.isPending}
-                  >
-                    {uploadProfileImage.isPending ? 'Uploading...' : 'Upload image'}
-                  </button>
-                  <button
-                    type="button"
-                    className="button secondary"
-                    onClick={() => {
-                      setProfileMenuOpen(false);
-                      setShowChangePasswordScreen(true);
-                      setChangePasswordForm(changePasswordDefaults);
-                      setChangePasswordError('');
-                    }}
-                  >
-                    Change password
-                  </button>
-                </>
-              ) : null}
-              <button type="button" className="button danger" onClick={onLogout}>
-                Sign out
-              </button>
-            </div>
-          ) : null}
         </div>
-      </div>
-
+      </form>
+    </div>
+  ) : (
+    <>
       <section className="card controls" aria-label="Search and filters">
         <input
           className="input"
@@ -490,7 +433,11 @@ export default function HomePage() {
           value={q}
           onChange={(event) => setQ(event.target.value)}
         />
-        <select className="select" value={role} onChange={(event) => setRole(event.target.value as '' | UserRole)}>
+        <select
+          className="select"
+          value={role}
+          onChange={(event) => setRole(event.target.value as '' | UserRole)}
+        >
           <option value="">All roles</option>
           {roleOptions.map((item) => (
             <option key={item} value={item}>
@@ -510,7 +457,7 @@ export default function HomePage() {
       </section>
 
       <div className="grid" style={{ marginTop: 16 }}>
-        {canEdit ? (
+        {canEdit && showEmployeeForm ? (
           <section className="card">
             <form className="form" onSubmit={submitForm}>
               <h2 style={{ margin: 0 }}>{editingEmployeeId ? 'Edit Employee' : 'Add Employee'}</h2>
@@ -519,13 +466,17 @@ export default function HomePage() {
                   className="input"
                   placeholder="First name"
                   value={form.firstName}
-                  onChange={(event) => setForm((prev) => ({ ...prev, firstName: event.target.value }))}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, firstName: event.target.value }))
+                  }
                 />
                 <input
                   className="input"
                   placeholder="Last name"
                   value={form.lastName}
-                  onChange={(event) => setForm((prev) => ({ ...prev, lastName: event.target.value }))}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, lastName: event.target.value }))
+                  }
                 />
               </div>
               <div className="formRow">
@@ -540,13 +491,17 @@ export default function HomePage() {
                   className="input"
                   placeholder="Department"
                   value={form.department}
-                  onChange={(event) => setForm((prev) => ({ ...prev, department: event.target.value }))}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, department: event.target.value }))
+                  }
                 />
               </div>
               <select
                 className="select"
                 value={form.role}
-                onChange={(event) => setForm((prev) => ({ ...prev, role: event.target.value as UserRole }))}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, role: event.target.value as UserRole }))
+                }
               >
                 {roleOptions.map((item) => (
                   <option key={item} value={item}>
@@ -556,7 +511,11 @@ export default function HomePage() {
               </select>
               {formError ? <div className="error">{formError}</div> : null}
               <div className="formRow">
-                <button className="button" type="submit" disabled={createEmployee.isPending || updateEmployee.isPending}>
+                <button
+                  className="button"
+                  type="submit"
+                  disabled={createEmployee.isPending || updateEmployee.isPending}
+                >
                   {editingEmployeeId ? 'Update employee' : 'Create employee'}
                 </button>
                 {editingEmployeeId ? (
@@ -567,6 +526,7 @@ export default function HomePage() {
                       clearEditing();
                       setForm(emptyForm);
                       setFormError('');
+                      setShowEmployeeForm(false);
                     }}
                   >
                     Cancel edit
@@ -605,7 +565,11 @@ export default function HomePage() {
                   <td>
                     <div style={{ display: 'flex', gap: 8 }}>
                       {canEdit ? (
-                        <button type="button" className="button secondary" onClick={() => onEdit(employee)}>
+                        <button
+                          type="button"
+                          className="button secondary"
+                          onClick={() => onEdit(employee)}
+                        >
                           Edit
                         </button>
                       ) : null}
@@ -642,7 +606,15 @@ export default function HomePage() {
             </tbody>
           </table>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 12, gap: 10 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: 12,
+              gap: 10,
+            }}
+          >
             <div className="muted">
               Page {employeesQuery.data?.page ?? page} of {employeesQuery.data?.totalPages ?? 1}
             </div>
@@ -678,6 +650,154 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+      </div>
+    </>
+  );
+
+  return (
+    <main>
+      <div className="appShell">
+        <header className="card appHeader">
+          <div>
+            <h1 style={{ margin: 0 }}>{headerTitle}</h1>
+            {session ? (
+              <p className="muted" style={{ marginTop: 8 }}>
+                Logged in as {session.user.email} ({session.user.role})
+              </p>
+            ) : (
+              <p className="muted" style={{ marginTop: 8 }}>
+                Sign in to access your employee workspace.
+              </p>
+            )}
+          </div>
+          {session ? (
+            <div className="appHeaderActions" ref={profileContainerRef}>
+              <span className="badge">Total: {employeesQuery.data?.total ?? 0}</span>
+              <button
+                type="button"
+                className="profileTrigger"
+                aria-label="Open profile menu"
+                onClick={() => setProfileMenuOpen((prev) => !prev)}
+              >
+                {session.user.profileImage ? (
+                  <Image
+                    src={session.user.profileImage}
+                    alt="Profile"
+                    className="profileAvatarImage"
+                    width={44}
+                    height={44}
+                  />
+                ) : (
+                  <span className="profileAvatarInitial">{profileInitial}</span>
+                )}
+              </button>
+              {profileMenuOpen ? (
+                <div className="profileMenu">
+                  <div className="profilePreview">
+                    {session.user.profileImage ? (
+                      <Image
+                        src={session.user.profileImage}
+                        alt="Profile preview"
+                        className="profilePreviewImage"
+                        width={48}
+                        height={48}
+                      />
+                    ) : (
+                      <div className="profilePreviewPlaceholder">{profileInitial}</div>
+                    )}
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{session.user.email}</div>
+                      <div className="muted">{session.user.role}</div>
+                    </div>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={onProfileFileChange}
+                  />
+                  {hasEmployeeRecord ? (
+                    <>
+                      {profileError ? <div className="error">{profileError}</div> : null}
+                      <button
+                        type="button"
+                        className="button secondary"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadProfileImage.isPending}
+                      >
+                        {uploadProfileImage.isPending ? 'Uploading...' : 'Upload image'}
+                      </button>
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      setShowChangePasswordScreen(true);
+                      setChangePasswordForm(changePasswordDefaults);
+                      setChangePasswordError('');
+                    }}
+                  >
+                    Change password
+                  </button>
+                  <button type="button" className="button danger" onClick={onLogout}>
+                    Sign out
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </header>
+
+        <div className="appLayout">
+          <aside className="card appNav">
+            <h3 style={{ margin: 0 }}>Navigation</h3>
+            {session ? (
+              <div className="navMenu" style={{ marginTop: 10 }}>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    className="navItem"
+                    onClick={() => {
+                      setShowChangePasswordScreen(false);
+                      setShowEmployeeForm(true);
+                      clearEditing();
+                      setForm(emptyForm);
+                      setFormError('');
+                    }}
+                  >
+                    Create Employee
+                  </button>
+                ) : (
+                  <p className="muted" style={{ margin: 0 }}>
+                    No admin menus available.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="muted" style={{ margin: '8px 0 0' }}>
+                Sign in to view menus.
+              </p>
+            )}
+          </aside>
+          <section className="appBody">
+            <div className="appBodyContent">{bodyContent}</div>
+          </section>
+        </div>
+        <footer className="card appFooter">
+          <div>
+            <div className="appLogoMark" aria-hidden="true">
+              EM
+            </div>
+            <strong>EmPortal 2.0</strong>
+          </div>
+          <p className="muted">
+            Trademark: Edvenswa Employee Management Portal. Product log: Unified web and mobile
+            workforce operations.
+          </p>
+        </footer>
       </div>
     </main>
   );
