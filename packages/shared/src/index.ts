@@ -38,6 +38,11 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export const fullName = (employee: Pick<Employee, 'firstName' | 'lastName'>): string => {
   return `${employee.firstName} ${employee.lastName}`;
 };

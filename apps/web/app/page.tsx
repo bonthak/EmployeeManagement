@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Employee, EmployeePayload, UserRole } from '@em/shared';
+import type { ChangePasswordRequest, Employee, EmployeePayload, UserRole } from '@em/shared';
 import { authApi, employeeApi, type SessionState, userApi } from '../lib/employee-api';
 import { useEmployeeUiStore } from '../store/employee-ui-store';
 
@@ -20,8 +20,14 @@ const emptyForm: EmployeePayload = {
 };
 
 const loginDefaults = {
-  email: 'admin@company.com',
-  password: 'ChangeMe123!',
+  email: '',
+  password: '',
+};
+
+const changePasswordDefaults: ChangePasswordRequest & { confirmPassword: string } = {
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: '',
 };
 
 export default function HomePage() {
@@ -44,15 +50,21 @@ export default function HomePage() {
   } = useEmployeeUiStore();
 
   const [session, setSession] = useState<SessionState | null>(null);
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [loginForm, setLoginForm] = useState(loginDefaults);
   const [loginError, setLoginError] = useState('');
+  const [loginInfo, setLoginInfo] = useState('');
   const [form, setForm] = useState<EmployeePayload>(emptyForm);
   const [formError, setFormError] = useState('');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [showChangePasswordScreen, setShowChangePasswordScreen] = useState(false);
+  const [changePasswordForm, setChangePasswordForm] = useState(changePasswordDefaults);
+  const [changePasswordError, setChangePasswordError] = useState('');
   const [profileError, setProfileError] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    setHasHydrated(true);
     const raw = window.localStorage.getItem(sessionKey);
     if (!raw) return;
     try {
@@ -77,8 +89,10 @@ export default function HomePage() {
       setSession(payload);
       window.localStorage.setItem(sessionKey, JSON.stringify(payload));
       setLoginError('');
+      setLoginInfo('');
     },
     onError: () => {
+      setLoginInfo('');
       setLoginError('Invalid login. Check credentials and database seed.');
     },
   });
@@ -131,6 +145,32 @@ export default function HomePage() {
     },
   });
 
+  const changePassword = useMutation({
+    mutationFn: (payload: ChangePasswordRequest) => userApi.changePassword(session!.token, payload),
+    onSuccess: async () => {
+      if (session?.token) {
+        try {
+          await authApi.logout(session.token);
+        } catch {
+          // Ignore logout API failures and clear local session regardless.
+        }
+      }
+
+      setSession(null);
+      setProfileMenuOpen(false);
+      setShowChangePasswordScreen(false);
+      setChangePasswordForm(changePasswordDefaults);
+      setChangePasswordError('');
+      setLoginError('');
+      setLoginInfo('Password changed successfully. Please sign in again.');
+      window.localStorage.removeItem(sessionKey);
+      queryClient.removeQueries({ queryKey: ['employees'] });
+    },
+    onError: () => {
+      setChangePasswordError('Failed to change password. Check your current password and try again.');
+    },
+  });
+
   const canEdit = session?.user.role === 'admin' || session?.user.role === 'manager';
   const canDelete = session?.user.role === 'admin';
 
@@ -176,8 +216,41 @@ export default function HomePage() {
     }
     setSession(null);
     setProfileMenuOpen(false);
+    setShowChangePasswordScreen(false);
+    setChangePasswordForm(changePasswordDefaults);
+    setChangePasswordError('');
     window.localStorage.removeItem(sessionKey);
     queryClient.removeQueries({ queryKey: ['employees'] });
+  };
+
+  const onSubmitChangePassword = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setChangePasswordError('');
+
+    if (!changePasswordForm.currentPassword || !changePasswordForm.newPassword || !changePasswordForm.confirmPassword) {
+      setChangePasswordError('All password fields are required.');
+      return;
+    }
+
+    if (changePasswordForm.newPassword.length < 8) {
+      setChangePasswordError('New password must be at least 8 characters.');
+      return;
+    }
+
+    if (changePasswordForm.newPassword !== changePasswordForm.confirmPassword) {
+      setChangePasswordError('New password and confirm password must match.');
+      return;
+    }
+
+    if (changePasswordForm.currentPassword === changePasswordForm.newPassword) {
+      setChangePasswordError('New password must be different from current password.');
+      return;
+    }
+
+    await changePassword.mutateAsync({
+      currentPassword: changePasswordForm.currentPassword,
+      newPassword: changePasswordForm.newPassword,
+    });
   };
 
   const onProfileFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,14 +267,31 @@ export default function HomePage() {
   };
 
   const profileInitial = session?.user.email?.charAt(0).toUpperCase() ?? 'U';
+  const portalTitle = session?.user.employeeId ? 'Employee Portal' : 'Employee Management Portal';
 
-  if (!session) {
+  if (!hasHydrated) {
     return (
       <main>
         <div className="card form" style={{ maxWidth: 460, margin: '32px auto' }}>
           <h1 style={{ margin: 0 }}>Employee Portal Login</h1>
           <p className="muted" style={{ margin: '4px 0 0' }}>
-            Default seed user: admin@company.com / ChangeMe123!
+            Loading...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return (
+      <main>
+        <div className="card form" style={{ maxWidth: 460, margin: '32px auto' }}>
+          <div className="authIllustration" aria-hidden="true">
+            <Image src="/art/login-hero.svg" alt="" width={640} height={320} priority />
+          </div>
+          <h1 style={{ margin: 0 }}>Employee Portal Login</h1>
+          <p className="muted" style={{ margin: '4px 0 0' }}>
+            Use seeded credentials configured for this environment.
           </p>
           <input
             className="input"
@@ -216,10 +306,81 @@ export default function HomePage() {
             onChange={(event) => setLoginForm((prev) => ({ ...prev, password: event.target.value }))}
             placeholder="Password"
           />
+          {loginInfo ? <div className="muted">{loginInfo}</div> : null}
           {loginError ? <div className="error">{loginError}</div> : null}
           <button type="button" className="button" onClick={() => loginMutation.mutate()}>
             {loginMutation.isPending ? 'Signing in...' : 'Sign in'}
           </button>
+        </div>
+      </main>
+    );
+  }
+
+  if (showChangePasswordScreen) {
+    return (
+      <main>
+        <div className="card form" style={{ maxWidth: 520, margin: '32px auto' }}>
+          <div className="authIllustration" aria-hidden="true">
+            <Image src="/art/login-hero.svg" alt="" width={640} height={320} />
+          </div>
+          <h1 style={{ margin: 0 }}>Change Password</h1>
+          <p className="muted" style={{ margin: '4px 0 0' }}>
+            Update your password to continue using the portal.
+          </p>
+          <form className="form" style={{ padding: 0 }} onSubmit={onSubmitChangePassword}>
+            <input
+              className="input"
+              type="password"
+              placeholder="Current password"
+              value={changePasswordForm.currentPassword}
+              onChange={(event) =>
+                setChangePasswordForm((prev) => ({
+                  ...prev,
+                  currentPassword: event.target.value,
+                }))
+              }
+            />
+            <input
+              className="input"
+              type="password"
+              placeholder="New password"
+              value={changePasswordForm.newPassword}
+              onChange={(event) =>
+                setChangePasswordForm((prev) => ({
+                  ...prev,
+                  newPassword: event.target.value,
+                }))
+              }
+            />
+            <input
+              className="input"
+              type="password"
+              placeholder="Confirm new password"
+              value={changePasswordForm.confirmPassword}
+              onChange={(event) =>
+                setChangePasswordForm((prev) => ({
+                  ...prev,
+                  confirmPassword: event.target.value,
+                }))
+              }
+            />
+            {changePasswordError ? <div className="error">{changePasswordError}</div> : null}
+            <div className="formRow">
+              <button type="submit" className="button" disabled={changePassword.isPending}>
+                {changePassword.isPending ? 'Updating...' : 'Update password'}
+              </button>
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => {
+                  setShowChangePasswordScreen(false);
+                  setChangePasswordError('');
+                }}
+              >
+                Back
+              </button>
+            </div>
+          </form>
         </div>
       </main>
     );
@@ -231,7 +392,7 @@ export default function HomePage() {
     <main>
       <div className="header">
         <div>
-          <h1 style={{ margin: 0 }}>Employee Management Portal</h1>
+          <h1 style={{ margin: 0 }}>{portalTitle}</h1>
           <p className="muted" style={{ marginTop: 8 }}>
             Logged in as {session.user.email} ({session.user.role})
           </p>
@@ -278,6 +439,18 @@ export default function HomePage() {
                 disabled={uploadProfileImage.isPending}
               >
                 {uploadProfileImage.isPending ? 'Uploading...' : 'Upload image'}
+              </button>
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => {
+                  setProfileMenuOpen(false);
+                  setShowChangePasswordScreen(true);
+                  setChangePasswordForm(changePasswordDefaults);
+                  setChangePasswordError('');
+                }}
+              >
+                Change password
               </button>
               <button type="button" className="button danger" onClick={onLogout}>
                 Sign out
@@ -429,7 +602,18 @@ export default function HomePage() {
               ))}
               {!employeesQuery.isLoading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>No employees match your filter.</td>
+                  <td colSpan={5}>
+                    <div className="emptyState">
+                      <Image
+                        src="/art/empty-employees.svg"
+                        alt="No matching employees"
+                        width={340}
+                        height={220}
+                        className="emptyStateImage"
+                      />
+                      <div>No employees match your filter.</div>
+                    </div>
+                  </td>
                 </tr>
               ) : null}
             </tbody>

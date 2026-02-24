@@ -1,0 +1,29 @@
+<svg width="640" height="320" viewBox="0 0 640 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="320" rx="24" fill="url(#bg)"/>
+  <circle cx="98" cy="90" r="72" fill="url(#orbA)" fill-opacity="0.8"/>
+  <circle cx="552" cy="58" r="56" fill="url(#orbB)" fill-opacity="0.75"/>
+  <rect x="64" y="56" width="512" height="208" rx="18" fill="white" fill-opacity="0.14"/>
+  <rect x="96" y="86" width="186" height="16" rx="8" fill="#E2F4FF"/>
+  <rect x="96" y="116" width="228" height="12" rx="6" fill="#B9DFFF"/>
+  <rect x="96" y="144" width="164" height="12" rx="6" fill="#B9DFFF"/>
+  <rect x="96" y="188" width="142" height="34" rx="10" fill="#0E7490"/>
+  <rect x="358" y="88" width="184" height="134" rx="16" fill="#0E7490"/>
+  <circle cx="414" cy="133" r="22" fill="#D6F2FF"/>
+  <rect x="384" y="166" width="116" height="12" rx="6" fill="#A5E3FF"/>
+  <rect x="384" y="184" width="90" height="10" rx="5" fill="#A5E3FF"/>
+  <defs>
+    <linearGradient id="bg" x1="38" y1="4" x2="610" y2="320" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#145DA0"/>
+      <stop offset="0.54" stop-color="#0E7490"/>
+      <stop offset="1" stop-color="#0B3C5D"/>
+    </linearGradient>
+    <linearGradient id="orbA" x1="26" y1="18" x2="158" y2="166" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+    <linearGradient id="orbB" x1="506" y1="14" x2="590" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A5F3FC"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+</svg>

@@ -5,12 +5,25 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import helmet from 'helmet';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { z } from 'zod';
-import type { AuthUser, Employee, EmployeePayload, LoginRequest, LoginResponse, PaginatedEmployees, UserRole } from '@em/shared';
+import type {
+  AuthUser,
+  ChangePasswordRequest,
+  Employee,
+  EmployeePayload,
+  LoginRequest,
+  LoginResponse,
+  PaginatedEmployees,
+  UserRole,
+} from '@em/shared';
 import prisma from './lib/prisma.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
-const jwtSecret = process.env.JWT_SECRET ?? 'super-secret-change-me';
+const jwtSecret = process.env.JWT_SECRET;
+
+if (!jwtSecret) {
+  throw new Error('JWT_SECRET is required');
+}
 
 app.use(helmet());
 app.use(cors({ origin: ['http://localhost:3000', 'http://localhost:8081'] }));
@@ -35,9 +48,26 @@ const profileImageSchema = z.object({
   profileImage: z.string().min(1).max(2_000_000),
 });
 
-const DEFAULT_EMPLOYEE_PASSWORD_HASH = '$2b$10$/tnN/KbHtBrRbeQN6ds0QuPD72p.ZhiIKXjMgEn9EUF1Sd.dWPTuW';
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(8),
+    newPassword: z.string().min(8),
+  })
+  .refine((value) => value.currentPassword !== value.newPassword, {
+    message: 'New password must be different from current password',
+    path: ['newPassword'],
+  });
+
+const defaultEmployeePassword = process.env.DEFAULT_PASSWORD;
+
+if (!defaultEmployeePassword) {
+  throw new Error('DEFAULT_PASSWORD is required');
+}
+
+const DEFAULT_EMPLOYEE_PASSWORD_HASH = bcrypt.hashSync(defaultEmployeePassword, 10);
 
 type RequestUser = AuthUser;
+type TokenClaims = Omit<AuthUser, 'profileImage'>;
 
 interface AuthRequest extends Request {
   user?: RequestUser;
@@ -61,7 +91,7 @@ const toEmployee = (entity: {
   userId: entity.userId,
 });
 
-const tokenForUser = (user: RequestUser): string => {
+const tokenForUser = (user: TokenClaims): string => {
   return jwt.sign(user, jwtSecret, { expiresIn: '12h' });
 };
 
@@ -75,13 +105,13 @@ const authRequired = (req: AuthRequest, res: Response, next: NextFunction): void
   const token = authHeader.slice('Bearer '.length);
 
   try {
-    const payload = jwt.verify(token, jwtSecret) as JwtPayload & RequestUser;
+    const payload = jwt.verify(token, jwtSecret) as JwtPayload & TokenClaims;
     req.user = {
       id: payload.id,
       email: payload.email,
       role: payload.role,
       employeeId: payload.employeeId ?? null,
-      profileImage: payload.profileImage ?? null,
+      profileImage: null,
     };
     next();
   } catch {
@@ -138,8 +168,15 @@ app.post('/api/auth/login', async (req, res) => {
     profileImage: user.profileImage ?? null,
   };
 
+  const tokenClaims: TokenClaims = {
+    id: authUser.id,
+    email: authUser.email,
+    role: authUser.role,
+    employeeId: authUser.employeeId ?? null,
+  };
+
   const response: LoginResponse = {
-    token: tokenForUser(authUser),
+    token: tokenForUser(tokenClaims),
     user: authUser,
   };
 
@@ -173,6 +210,39 @@ app.patch('/api/users/me/profile-image', authRequired, async (req: AuthRequest, 
     return res.json({ user: authUser });
   } catch {
     return res.status(404).json({ error: 'User not found' });
+  }
+});
+
+app.patch('/api/users/me/password', authRequired, async (req: AuthRequest, res) => {
+  const parsed = changePasswordSchema.safeParse(req.body satisfies ChangePasswordRequest);
+  if (!parsed.success) {
+    return res.status(400).json({ error: parsed.error.flatten() });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { id: true, passwordHash: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const isCurrentPasswordValid = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+    if (!isCurrentPasswordValid) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const newPasswordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+    await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { passwordHash: newPasswordHash },
+    });
+
+    return res.status(204).send();
+  } catch {
+    return res.status(500).json({ error: 'Unable to change password' });
   }
 });
 
@@ -329,8 +399,26 @@ app.put('/api/employees/:id', authRequired, requireRole(['admin', 'manager']), a
 });
 
 app.delete('/api/employees/:id', authRequired, requireRole(['admin']), async (req, res) => {
+  const employeeId = String(req.params.id);
+
   try {
-    await prisma.employee.delete({ where: { id: String(req.params.id) } });
+    await prisma.$transaction(async (tx) => {
+      const employee = await tx.employee.findUnique({
+        where: { id: employeeId },
+        select: { id: true, userId: true },
+      });
+
+      if (!employee) {
+        throw new Error('NOT_FOUND');
+      }
+
+      await tx.employee.delete({ where: { id: employeeId } });
+
+      if (employee.userId) {
+        await tx.user.deleteMany({ where: { id: employee.userId } });
+      }
+    });
+
     return res.status(204).send();
   } catch {
     return res.status(404).json({ error: 'Employee not found' });

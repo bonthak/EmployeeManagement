@@ -1,5 +1,6 @@
 import type {
   AuthUser,
+  ChangePasswordRequest,
   Employee,
   EmployeePayload,
   LoginRequest,
@@ -111,5 +112,13 @@ export const userApi = {
     });
     const payload = await handleResponse<{ user: AuthUser }>(response);
     return payload.user;
+  },
+  changePassword: async (token: string, payload: ChangePasswordRequest): Promise<void> => {
+    const response = await fetch(`${API_BASE}/api/users/me/password`, {
+      method: 'PATCH',
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return handleResponse<void>(response);
   },
 };
