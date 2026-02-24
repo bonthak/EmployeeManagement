@@ -62,6 +62,7 @@ export default function HomePage() {
   const [changePasswordError, setChangePasswordError] = useState('');
   const [profileError, setProfileError] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const profileContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setHasHydrated(true);
@@ -74,6 +75,23 @@ export default function HomePage() {
       window.localStorage.removeItem(sessionKey);
     }
   }, []);
+
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+
+    const onDocumentMouseDown = (event: MouseEvent) => {
+      if (!profileContainerRef.current) return;
+      const target = event.target as Node;
+      if (!profileContainerRef.current.contains(target)) {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onDocumentMouseDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocumentMouseDown);
+    };
+  }, [profileMenuOpen]);
 
   const filters = useMemo(() => ({ q, role, department, page, pageSize }), [q, role, department, page, pageSize]);
 
@@ -268,6 +286,7 @@ export default function HomePage() {
 
   const profileInitial = session?.user.email?.charAt(0).toUpperCase() ?? 'U';
   const portalTitle = session?.user.employeeId ? 'Employee Portal' : 'Employee Management Portal';
+  const hasEmployeeRecord = Boolean(session?.user.employeeId);
 
   if (!hasHydrated) {
     return (
@@ -397,7 +416,7 @@ export default function HomePage() {
             Logged in as {session.user.email} ({session.user.role})
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', position: 'relative' }}>
+        <div ref={profileContainerRef} style={{ display: 'flex', gap: 10, alignItems: 'center', position: 'relative' }}>
           <span className="badge">Total: {employeesQuery.data?.total ?? 0}</span>
           <button
             type="button"
@@ -431,27 +450,31 @@ export default function HomePage() {
                 </div>
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onProfileFileChange} />
-              {profileError ? <div className="error">{profileError}</div> : null}
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadProfileImage.isPending}
-              >
-                {uploadProfileImage.isPending ? 'Uploading...' : 'Upload image'}
-              </button>
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => {
-                  setProfileMenuOpen(false);
-                  setShowChangePasswordScreen(true);
-                  setChangePasswordForm(changePasswordDefaults);
-                  setChangePasswordError('');
-                }}
-              >
-                Change password
-              </button>
+              {hasEmployeeRecord ? (
+                <>
+                  {profileError ? <div className="error">{profileError}</div> : null}
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadProfileImage.isPending}
+                  >
+                    {uploadProfileImage.isPending ? 'Uploading...' : 'Upload image'}
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      setShowChangePasswordScreen(true);
+                      setChangePasswordForm(changePasswordDefaults);
+                      setChangePasswordError('');
+                    }}
+                  >
+                    Change password
+                  </button>
+                </>
+              ) : null}
               <button type="button" className="button danger" onClick={onLogout}>
                 Sign out
               </button>
