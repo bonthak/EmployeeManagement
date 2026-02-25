@@ -3,19 +3,32 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ChangePasswordRequest, Employee, EmployeePayload, UserRole } from '@em/shared';
+import type {
+  ChangePasswordRequest,
+  Employee,
+  EmployeeCreatePayload,
+  EmployeeUpdatePayload,
+  UserRole,
+} from '@em/shared';
 import { authApi, employeeApi, type SessionState, userApi } from '../lib/employee-api';
 import { useEmployeeUiStore } from '../store/employee-ui-store';
 
 const roleOptions: UserRole[] = ['admin', 'manager', 'employee'];
 const sessionKey = 'emportal.session';
 
-const emptyForm: EmployeePayload = {
+const emptyForm: EmployeeCreatePayload = {
   firstName: '',
   lastName: '',
   email: '',
   role: 'employee',
   department: '',
+  empId: '',
+  workingLocation: '',
+  baseLocation: '',
+  mobileNumber: '',
+  billable: false,
+  projectAllocation: 0,
+  active: true,
   userId: null,
 };
 
@@ -28,6 +41,33 @@ const changePasswordDefaults: ChangePasswordRequest & { confirmPassword: string 
   currentPassword: '',
   newPassword: '',
   confirmPassword: '',
+};
+
+const getApiErrorMessage = (error: unknown, fallback: string): string => {
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  const raw = error.message?.trim();
+  if (!raw) {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { error?: unknown };
+    if (typeof parsed.error === 'string' && parsed.error.trim()) {
+      return parsed.error;
+    }
+  } catch {
+    // Keep the original message when response text is not JSON.
+  }
+
+  return raw;
+};
+
+const debugEmployeeForm = (...args: unknown[]): void => {
+  // eslint-disable-next-line no-console
+  console.log('[EmployeeForm]', ...args);
 };
 
 export default function HomePage() {
@@ -54,7 +94,7 @@ export default function HomePage() {
   const [loginForm, setLoginForm] = useState(loginDefaults);
   const [loginError, setLoginError] = useState('');
   const [loginInfo, setLoginInfo] = useState('');
-  const [form, setForm] = useState<EmployeePayload>(emptyForm);
+  const [form, setForm] = useState<EmployeeCreatePayload>(emptyForm);
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [nameSortOrder, setNameSortOrder] = useState<'asc' | 'desc'>('asc');
   const [recentlyUpdatedEmployeeId, setRecentlyUpdatedEmployeeId] = useState<string | null>(null);
@@ -181,7 +221,7 @@ export default function HomePage() {
   });
 
   const createEmployee = useMutation({
-    mutationFn: (payload: EmployeePayload) => employeeApi.create(session!.token, payload),
+    mutationFn: (payload: EmployeeCreatePayload) => employeeApi.create(session!.token, payload),
     onSuccess: async (createdEmployee) => {
       setForm(emptyForm);
       setFormError('');
@@ -197,7 +237,7 @@ export default function HomePage() {
   });
 
   const updateEmployee = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: EmployeePayload }) =>
+    mutationFn: ({ id, payload }: { id: string; payload: EmployeeUpdatePayload }) =>
       employeeApi.update(session!.token, id, payload),
     onSuccess: async (updatedEmployee) => {
       clearEditing();
@@ -276,20 +316,57 @@ export default function HomePage() {
   const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError('');
+    debugEmployeeForm('submit:start', { editingEmployeeId, form });
 
-    if (!form.firstName || !form.lastName || !form.email || !form.department) {
+    if (
+      !form.firstName ||
+      !form.lastName ||
+      !form.department ||
+      (!editingEmployeeId && !form.email)
+    ) {
+      debugEmployeeForm('submit:validation_failed', 'missing required fields');
       setFormError('All fields are required.');
+      return;
+    }
+
+    if (
+      !Number.isFinite(form.projectAllocation) ||
+      form.projectAllocation < 0 ||
+      form.projectAllocation > 100
+    ) {
+      debugEmployeeForm('submit:validation_failed', 'invalid projectAllocation', {
+        projectAllocation: form.projectAllocation,
+      });
+      setFormError('Project allocation must be a number between 0 and 100.');
       return;
     }
 
     try {
       if (editingEmployeeId) {
-        await updateEmployee.mutateAsync({ id: editingEmployeeId, payload: form });
+        const updatePayload: EmployeeUpdatePayload = {
+          firstName: form.firstName,
+          lastName: form.lastName,
+          role: form.role,
+          department: form.department,
+          empId: form.empId,
+          workingLocation: form.workingLocation,
+          baseLocation: form.baseLocation,
+          mobileNumber: form.mobileNumber,
+          billable: form.billable,
+          projectAllocation: form.projectAllocation,
+          active: form.active,
+          userId: form.userId,
+        };
+        await updateEmployee.mutateAsync({ id: editingEmployeeId, payload: updatePayload });
       } else {
         await createEmployee.mutateAsync(form);
       }
-    } catch {
-      setFormError('Failed to save employee. Check duplicate email or permissions.');
+      debugEmployeeForm('submit:success', { editingEmployeeId });
+    } catch (error) {
+      debugEmployeeForm('submit:error', error);
+      setFormError(
+        getApiErrorMessage(error, 'Failed to save employee. Check duplicate email or permissions.'),
+      );
     }
   };
 
@@ -302,6 +379,13 @@ export default function HomePage() {
       email: employee.email,
       role: employee.role,
       department: employee.department,
+      empId: employee.empId ?? '',
+      workingLocation: employee.workingLocation ?? '',
+      baseLocation: employee.baseLocation ?? '',
+      mobileNumber: employee.mobileNumber ?? '',
+      billable: employee.billable ?? false,
+      projectAllocation: employee.projectAllocation ?? 0,
+      active: employee.active ?? true,
       userId: employee.userId ?? null,
     });
   };
@@ -596,19 +680,95 @@ export default function HomePage() {
                 />
               </div>
               <div className="formRow">
-                <input
-                  className="input"
-                  type="email"
-                  placeholder="Email"
-                  value={form.email}
-                  onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
-                />
+                {!editingEmployeeId ? (
+                  <input
+                    className="input"
+                    type="email"
+                    placeholder="Email"
+                    value={form.email}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, email: event.target.value }))
+                    }
+                  />
+                ) : null}
                 <input
                   className="input"
                   placeholder="Department"
                   value={form.department}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, department: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="formRow">
+                <input
+                  className="input"
+                  placeholder="Emp ID"
+                  value={form.empId ?? ''}
+                  onChange={(event) => setForm((prev) => ({ ...prev, empId: event.target.value }))}
+                />
+                <input
+                  className="input"
+                  placeholder="Working location"
+                  value={form.workingLocation ?? ''}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, workingLocation: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="formRow">
+                <input
+                  className="input"
+                  placeholder="Base location"
+                  value={form.baseLocation ?? ''}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, baseLocation: event.target.value }))
+                  }
+                />
+                <input
+                  className="input"
+                  placeholder="Mobile number"
+                  value={form.mobileNumber ?? ''}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, mobileNumber: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="formRow">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.billable)}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, billable: event.target.checked }))
+                    }
+                  />
+                  Billable
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.active)}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, active: event.target.checked }))
+                    }
+                  />
+                  Active
+                </label>
+              </div>
+              <div className="formRow">
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="Project allocation (%)"
+                  value={form.projectAllocation ?? 0}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      projectAllocation: Number(event.target.value || 0),
+                    }))
                   }
                 />
               </div>
@@ -681,13 +841,16 @@ export default function HomePage() {
                 <th>Email</th>
                 <th>Department</th>
                 <th>Role</th>
+                <th>Billable</th>
+                <th>Project Allocation (%)</th>
+                <th>Active</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {employeesQuery.isLoading ? (
                 <tr>
-                  <td colSpan={5}>Loading employees...</td>
+                  <td colSpan={8}>Loading employees...</td>
                 </tr>
               ) : null}
               {rows.map((employee) => (
@@ -702,6 +865,9 @@ export default function HomePage() {
                   <td>{employee.email}</td>
                   <td>{employee.department}</td>
                   <td>{employee.role}</td>
+                  <td>{employee.billable ? 'Yes' : 'No'}</td>
+                  <td>{employee.projectAllocation}%</td>
+                  <td>{employee.active ? 'Yes' : 'No'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 8 }}>
                       {canEdit ? (
@@ -729,7 +895,7 @@ export default function HomePage() {
               ))}
               {!employeesQuery.isLoading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={8}>
                     <div className="emptyState">
                       <Image
                         src="/art/empty-employees.svg"

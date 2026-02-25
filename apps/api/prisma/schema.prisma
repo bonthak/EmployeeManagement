@@ -25,16 +25,23 @@ model User {
 }
 
 model Employee {
-  id         String    @id @default(cuid())
-  firstName  String
-  lastName   String
-  email      String    @unique
-  role       UserRole
-  department String
-  userId     String?   @unique
-  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  firstName         String
+  lastName          String
+  email             String    @unique
+  role              UserRole
+  department        String
+  empId             String?
+  workingLocation   String?
+  baseLocation      String?
+  mobileNumber      String?
+  billable          Boolean   @default(false)
+  projectAllocation Int       @default(0)
+  active            Boolean   @default(true)
+  userId            String?   @unique
+  user              User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([department])
   @@index([role])

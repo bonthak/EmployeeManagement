@@ -7,10 +7,19 @@ export interface Employee {
   email: string;
   role: UserRole;
   department: string;
+  empId?: string | null;
+  workingLocation?: string | null;
+  baseLocation?: string | null;
+  mobileNumber?: string | null;
+  billable: boolean;
+  projectAllocation: number;
+  active: boolean;
   userId?: string | null;
 }
 
-export type EmployeePayload = Omit<Employee, 'id'>;
+export type EmployeeCreatePayload = Omit<Employee, 'id'>;
+export type EmployeeUpdatePayload = Omit<Employee, 'id' | 'email'>;
+export type EmployeePayload = EmployeeCreatePayload;
 
 export interface PaginatedEmployees {
   data: Employee[];

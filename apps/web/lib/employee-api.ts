@@ -2,7 +2,8 @@ import type {
   AuthUser,
   ChangePasswordRequest,
   Employee,
-  EmployeePayload,
+  EmployeeCreatePayload,
+  EmployeeUpdatePayload,
   LoginRequest,
   LoginResponse,
   PaginatedEmployees,
@@ -32,7 +33,19 @@ const toQueryString = (filters: EmployeeFilters): string => {
 const handleResponse = async <T>(response: Response): Promise<T> => {
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(body || `Request failed with status ${response.status}`);
+    if (body) {
+      let parsedError: string | null = null;
+      try {
+        const parsed = JSON.parse(body) as { error?: unknown };
+        if (typeof parsed.error === 'string' && parsed.error.trim()) {
+          parsedError = parsed.error;
+        }
+      } catch {
+        // Keep fallback to raw body below.
+      }
+      throw new Error(parsedError ?? body);
+    }
+    throw new Error(`Request failed with status ${response.status}`);
   }
 
   if (response.status === 204) {
@@ -73,7 +86,7 @@ export const employeeApi = {
     });
     return handleResponse<PaginatedEmployees>(response);
   },
-  create: async (token: string, payload: EmployeePayload): Promise<Employee> => {
+  create: async (token: string, payload: EmployeeCreatePayload): Promise<Employee> => {
     const response = await fetch(`${API_BASE}/api/employees`, {
       method: 'POST',
       headers: withAuthHeaders(token),
@@ -81,7 +94,7 @@ export const employeeApi = {
     });
     return handleResponse<Employee>(response);
   },
-  update: async (token: string, id: string, payload: EmployeePayload): Promise<Employee> => {
+  update: async (token: string, id: string, payload: EmployeeUpdatePayload): Promise<Employee> => {
     const response = await fetch(`${API_BASE}/api/employees/${id}`, {
       method: 'PUT',
       headers: withAuthHeaders(token),

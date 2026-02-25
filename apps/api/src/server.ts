@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { Prisma } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
@@ -9,7 +10,8 @@ import type {
   AuthUser,
   ChangePasswordRequest,
   Employee,
-  EmployeePayload,
+  EmployeeCreatePayload,
+  EmployeeUpdatePayload,
   LoginRequest,
   LoginResponse,
   PaginatedEmployees,
@@ -30,12 +32,34 @@ app.use(cors({ origin: ['http://localhost:3000', 'http://localhost:8081'] }));
 app.use(express.json({ limit: '8mb' }));
 app.use(express.urlencoded({ extended: true, limit: '8mb' }));
 
-const employeePayloadSchema = z.object({
+const createEmployeePayloadSchema = z.object({
   firstName: z.string().trim().min(1),
   lastName: z.string().trim().min(1),
   email: z.string().email(),
   role: z.enum(['admin', 'employee', 'manager']),
   department: z.string().trim().min(1),
+  empId: z.string().trim().optional().nullable(),
+  workingLocation: z.string().trim().optional().nullable(),
+  baseLocation: z.string().trim().optional().nullable(),
+  mobileNumber: z.string().trim().optional().nullable(),
+  billable: z.boolean().optional().default(false),
+  projectAllocation: z.number().int().min(0).max(100).optional().default(0),
+  active: z.boolean().optional().default(true),
+  userId: z.string().optional().nullable(),
+});
+
+const updateEmployeePayloadSchema = z.object({
+  firstName: z.string().trim().min(1),
+  lastName: z.string().trim().min(1),
+  role: z.enum(['admin', 'employee', 'manager']),
+  department: z.string().trim().min(1),
+  empId: z.string().trim().optional().nullable(),
+  workingLocation: z.string().trim().optional().nullable(),
+  baseLocation: z.string().trim().optional().nullable(),
+  mobileNumber: z.string().trim().optional().nullable(),
+  billable: z.boolean().optional().default(false),
+  projectAllocation: z.number().int().min(0).max(100).optional().default(0),
+  active: z.boolean().optional().default(true),
   userId: z.string().optional().nullable(),
 });
 
@@ -80,6 +104,13 @@ const toEmployee = (entity: {
   email: string;
   role: UserRole;
   department: string;
+  empId: string | null;
+  workingLocation: string | null;
+  baseLocation: string | null;
+  mobileNumber: string | null;
+  billable: boolean;
+  projectAllocation: number;
+  active: boolean;
   userId: string | null;
 }): Employee => ({
   id: entity.id,
@@ -88,6 +119,13 @@ const toEmployee = (entity: {
   email: entity.email,
   role: entity.role,
   department: entity.department,
+  empId: entity.empId,
+  workingLocation: entity.workingLocation,
+  baseLocation: entity.baseLocation,
+  mobileNumber: entity.mobileNumber,
+  billable: entity.billable,
+  projectAllocation: entity.projectAllocation,
+  active: entity.active,
   userId: entity.userId,
 });
 
@@ -303,12 +341,12 @@ app.get('/api/employees/:id', authRequired, async (req: AuthRequest, res) => {
 });
 
 app.post('/api/employees', authRequired, requireRole(['admin', 'manager']), async (req, res) => {
-  const parsed = employeePayloadSchema.safeParse(req.body satisfies EmployeePayload);
+  const parsed = createEmployeePayloadSchema.safeParse(req.body satisfies EmployeeCreatePayload);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
-  const payload: EmployeePayload = parsed.data;
+  const payload: EmployeeCreatePayload = parsed.data;
 
   try {
     const created = await prisma.$transaction(async (tx) => {
@@ -327,56 +365,99 @@ app.post('/api/employees', authRequired, requireRole(['admin', 'manager']), asyn
           email: payload.email.toLowerCase(),
           role: payload.role,
           department: payload.department,
+          empId: payload.empId ?? null,
+          workingLocation: payload.workingLocation ?? null,
+          baseLocation: payload.baseLocation ?? null,
+          mobileNumber: payload.mobileNumber ?? null,
+          billable: payload.billable,
+          projectAllocation: payload.projectAllocation,
+          active: payload.active,
           userId: user.id,
         },
       });
     });
 
     return res.status(201).json(toEmployee(created));
-  } catch {
-    return res.status(409).json({ error: 'User or employee email already exists' });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return res.status(409).json({ error: 'User or employee email already exists' });
+    }
+
+    console.error('Create employee failed', error);
+    return res.status(500).json({ error: 'Unable to create employee at this time' });
   }
 });
 
 app.put('/api/employees/:id', authRequired, requireRole(['admin', 'manager']), async (req, res) => {
-  const parsed = employeePayloadSchema.safeParse(req.body satisfies EmployeePayload);
+  const parsed = updateEmployeePayloadSchema.safeParse(req.body satisfies EmployeeUpdatePayload);
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
 
-  const payload: EmployeePayload = parsed.data;
+  const payload: EmployeeUpdatePayload = parsed.data;
   const employeeId = String(req.params.id);
-  const normalizedEmail = payload.email.toLowerCase();
 
   try {
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.employee.findUnique({
         where: { id: employeeId },
-        select: { id: true, userId: true },
+        select: { id: true, email: true, userId: true },
       });
 
       if (!existing) {
         throw new Error('NOT_FOUND');
       }
 
+      const normalizedEmail = existing.email.toLowerCase();
       let userId = existing.userId;
       if (userId) {
-        await tx.user.update({
+        const user = await tx.user.findUnique({
           where: { id: userId },
-          data: {
-            email: normalizedEmail,
-            role: payload.role,
-          },
+          select: { id: true },
         });
+
+        if (user) {
+          await tx.user.update({
+            where: { id: userId },
+            data: {
+              role: payload.role,
+            },
+          });
+        } else {
+          userId = null;
+        }
       } else {
-        const createdUser = await tx.user.create({
-          data: {
-            email: normalizedEmail,
-            role: payload.role,
-            passwordHash: DEFAULT_EMPLOYEE_PASSWORD_HASH,
-          },
+        const matchedUser = await tx.user.findUnique({
+          where: { email: normalizedEmail },
+          select: { id: true },
         });
-        userId = createdUser.id;
+
+        if (matchedUser) {
+          const linkedElsewhere = await tx.employee.findFirst({
+            where: {
+              userId: matchedUser.id,
+              NOT: { id: employeeId },
+            },
+            select: { id: true },
+          });
+
+          if (!linkedElsewhere) {
+            await tx.user.update({
+              where: { id: matchedUser.id },
+              data: { role: payload.role },
+            });
+            userId = matchedUser.id;
+          }
+        } else {
+          const createdUser = await tx.user.create({
+            data: {
+              email: normalizedEmail,
+              role: payload.role,
+              passwordHash: DEFAULT_EMPLOYEE_PASSWORD_HASH,
+            },
+          });
+          userId = createdUser.id;
+        }
       }
 
       return tx.employee.update({
@@ -384,17 +465,27 @@ app.put('/api/employees/:id', authRequired, requireRole(['admin', 'manager']), a
         data: {
           firstName: payload.firstName,
           lastName: payload.lastName,
-          email: normalizedEmail,
           role: payload.role,
           department: payload.department,
+          empId: payload.empId ?? null,
+          workingLocation: payload.workingLocation ?? null,
+          baseLocation: payload.baseLocation ?? null,
+          mobileNumber: payload.mobileNumber ?? null,
+          billable: payload.billable,
+          projectAllocation: payload.projectAllocation,
+          active: payload.active,
           userId,
         },
       });
     });
 
     return res.json(toEmployee(updated));
-  } catch {
-    return res.status(404).json({ error: 'Employee not found or email already used' });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'NOT_FOUND') {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    return res.status(500).json({ error: 'Unable to update employee at this time' });
   }
 });
 
