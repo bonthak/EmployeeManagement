@@ -100,6 +100,7 @@ export default function HomePage() {
   const [recentlyUpdatedEmployeeId, setRecentlyUpdatedEmployeeId] = useState<string | null>(null);
   const [pendingScrollEmployeeId, setPendingScrollEmployeeId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [showChangePasswordScreen, setShowChangePasswordScreen] = useState(false);
   const [changePasswordForm, setChangePasswordForm] = useState(changePasswordDefaults);
@@ -108,6 +109,7 @@ export default function HomePage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const profileContainerRef = useRef<HTMLDivElement | null>(null);
   const employeeFormSectionRef = useRef<HTMLElement | null>(null);
+  const appBodyRef = useRef<HTMLElement | null>(null);
 
   const clearBrowserState = async () => {
     await queryClient.cancelQueries();
@@ -225,6 +227,9 @@ export default function HomePage() {
     onSuccess: async (createdEmployee) => {
       setForm(emptyForm);
       setFormError('');
+      setFormSuccess('Employee created successfully.');
+      appBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       setRecentlyUpdatedEmployeeId(createdEmployee.id);
       setPendingScrollEmployeeId(createdEmployee.id);
       const createdEmployeePage = await findEmployeePage(createdEmployee.id);
@@ -243,6 +248,7 @@ export default function HomePage() {
       clearEditing();
       setForm(emptyForm);
       setFormError('');
+      setFormSuccess('');
       setRecentlyUpdatedEmployeeId(updatedEmployee.id);
       setPendingScrollEmployeeId(updatedEmployee.id);
       if (!canCreateEmployee) {
@@ -312,10 +318,12 @@ export default function HomePage() {
   const isAdmin = session?.user.role === 'admin';
   const canCreateEmployee = isAdmin;
   const showPaginationControls = session?.user.role !== 'employee';
+  const isCreateMode = showEmployeeForm && !editingEmployeeId;
 
   const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError('');
+    setFormSuccess('');
     debugEmployeeForm('submit:start', { editingEmployeeId, form });
 
     if (
@@ -367,6 +375,7 @@ export default function HomePage() {
       setFormError(
         getApiErrorMessage(error, 'Failed to save employee. Check duplicate email or permissions.'),
       );
+      setFormSuccess('');
     }
   };
 
@@ -626,41 +635,57 @@ export default function HomePage() {
     </div>
   ) : (
     <>
-      <section className="card controls" aria-label="Search and filters">
-        <input
-          className="input"
-          placeholder="Search by name or email"
-          value={q}
-          onChange={(event) => setQ(event.target.value)}
-        />
-        <select
-          className="select"
-          value={role}
-          onChange={(event) => setRole(event.target.value as '' | UserRole)}
-        >
-          <option value="">All roles</option>
-          {roleOptions.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-        <input
-          className="input"
-          placeholder="Filter by department"
-          value={department}
-          onChange={(event) => setDepartment(event.target.value)}
-        />
-        <button type="button" className="button secondary" onClick={resetFilters}>
-          Reset filters
-        </button>
-      </section>
+      {!isCreateMode ? (
+        <section className="card controls" aria-label="Search and filters">
+          <input
+            className="input"
+            placeholder="Search by name or email"
+            value={q}
+            onChange={(event) => setQ(event.target.value)}
+          />
+          <select
+            className="select"
+            value={role}
+            onChange={(event) => setRole(event.target.value as '' | UserRole)}
+          >
+            <option value="">All roles</option>
+            {roleOptions.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+          <input
+            className="input"
+            placeholder="Filter by department"
+            value={department}
+            onChange={(event) => setDepartment(event.target.value)}
+          />
+          <button type="button" className="button secondary" onClick={resetFilters}>
+            Reset filters
+          </button>
+        </section>
+      ) : null}
 
       <div className="grid" style={{ marginTop: 16 }}>
         {canEdit && showEmployeeForm && (canCreateEmployee || Boolean(editingEmployeeId)) ? (
           <section ref={employeeFormSectionRef} className="card">
             <form className="form" onSubmit={submitForm}>
-              <h2 style={{ margin: 0 }}>{editingEmployeeId ? 'Edit Employee' : 'Add Employee'}</h2>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <h2 style={{ margin: 0 }}>{editingEmployeeId ? 'Edit Employee' : 'Add Employee'}</h2>
+                {!editingEmployeeId && formSuccess ? (
+                  <span className="muted" style={{ color: '#166534', fontWeight: 600 }}>
+                    {formSuccess}
+                  </span>
+                ) : null}
+              </div>
               <div className="formRow">
                 <input
                   className="input"
@@ -813,7 +838,8 @@ export default function HomePage() {
           </section>
         ) : null}
 
-        <section className="card tableWrap">
+        {!isCreateMode ? (
+          <section className="card tableWrap">
           <table className="table" aria-label="Employees list">
             <thead>
               <tr>
@@ -957,7 +983,8 @@ export default function HomePage() {
               </div>
             </div>
           ) : null}
-        </section>
+          </section>
+        ) : null}
       </div>
     </>
   );
@@ -1064,6 +1091,22 @@ export default function HomePage() {
             <h3 style={{ margin: 0 }}>Navigation</h3>
             {session ? (
               <div className="navMenu" style={{ marginTop: 10 }}>
+                {session.user.role !== 'employee' ? (
+                  <button
+                    type="button"
+                    className="navItem"
+                    onClick={() => {
+                      setShowChangePasswordScreen(false);
+                      clearEditing();
+                      setForm(emptyForm);
+                      setFormError('');
+                      setFormSuccess('');
+                      setShowEmployeeForm(false);
+                    }}
+                  >
+                    Show Employees
+                  </button>
+                ) : null}
                 {isAdmin ? (
                   <button
                     type="button"
@@ -1074,15 +1117,16 @@ export default function HomePage() {
                       clearEditing();
                       setForm(emptyForm);
                       setFormError('');
+                      setFormSuccess('');
                     }}
                   >
                     Create Employee
                   </button>
-                ) : (
+                ) : session.user.role === 'employee' ? (
                   <p className="muted" style={{ margin: 0 }}>
-                    No admin menus available.
+                    No menus available.
                   </p>
-                )}
+                ) : null}
               </div>
             ) : (
               <p className="muted" style={{ margin: '8px 0 0' }}>
@@ -1090,7 +1134,7 @@ export default function HomePage() {
               </p>
             )}
           </aside>
-          <section className="appBody">
+          <section ref={appBodyRef} className="appBody">
             <div className="appBodyContent">{bodyContent}</div>
           </section>
         </div>
