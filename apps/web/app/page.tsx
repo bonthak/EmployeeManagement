@@ -70,6 +70,15 @@ const debugEmployeeForm = (...args: unknown[]): void => {
   console.log('[EmployeeForm]', ...args);
 };
 
+const escapeXml = (value: string): string => {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+};
+
 interface EmployeeScreenState {
   showEmployeeForm: boolean;
   viewingEmployeeId: string | null;
@@ -327,6 +336,7 @@ export default function HomePage() {
   const canDelete = session?.user.role === 'admin';
   const isAdmin = session?.user.role === 'admin';
   const canCreateEmployee = isAdmin;
+  const canUseFilters = session?.user.role !== 'employee';
   const showPaginationControls = session?.user.role !== 'employee';
   const isViewMode = Boolean(viewingEmployeeId) && !editingEmployeeId;
   const isCreateMode = showEmployeeForm && !editingEmployeeId && !viewingEmployeeId;
@@ -623,6 +633,68 @@ export default function HomePage() {
     });
   }, [employeesQuery.data?.data, nameSortOrder]);
 
+  const exportVisibleEmployees = () => {
+    if (rows.length === 0) return;
+
+    const headers = [
+      'Name',
+      'Email',
+      'Department',
+      'Role',
+      'Billable',
+      'Project Allocation (%)',
+      'Active',
+    ];
+
+    const dataRows = rows.map((employee) => [
+      `${employee.firstName} ${employee.lastName}`.trim(),
+      employee.email,
+      employee.department,
+      employee.role,
+      employee.billable ? 'Yes' : 'No',
+      String(employee.projectAllocation),
+      employee.active ? 'Yes' : 'No',
+    ]);
+
+    const headerXml = headers
+      .map((header) => `<Cell><Data ss:Type="String">${escapeXml(header)}</Data></Cell>`)
+      .join('');
+
+    const rowXml = dataRows
+      .map(
+        (row) =>
+          `<Row>${row
+            .map((cell) => `<Cell><Data ss:Type="String">${escapeXml(cell)}</Data></Cell>`)
+            .join('')}</Row>`,
+      )
+      .join('');
+
+    const workbookXml = `<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Worksheet ss:Name="Employees">
+  <Table>
+   <Row>${headerXml}</Row>
+   ${rowXml}
+  </Table>
+ </Worksheet>
+</Workbook>`;
+
+    const blob = new Blob([workbookXml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    link.href = url;
+    link.download = `employees-${timestamp}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   const bodyContent = !hasHydrated ? (
     <div className="card form appBodyCard">
       <h1 style={{ margin: 0 }}>Employee Portal</h1>
@@ -724,7 +796,7 @@ export default function HomePage() {
     </div>
   ) : (
     <>
-      {!isCreateMode ? (
+      {!isCreateMode && canUseFilters ? (
         <section className="card controls" aria-label="Search and filters">
           <input
             className="input"
@@ -768,6 +840,16 @@ export default function HomePage() {
             }}
           >
             Reset filters
+          </button>
+          <button
+            type="button"
+            className="exportIconButton"
+            aria-label="Export visible employees to Excel"
+            title="Export to Excel"
+            onClick={exportVisibleEmployees}
+            disabled={rows.length === 0}
+          >
+            <Image src="/art/export.svg" alt="" width={18} height={18} />
           </button>
         </section>
       ) : null}

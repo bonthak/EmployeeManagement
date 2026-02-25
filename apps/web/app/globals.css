@@ -200,7 +200,7 @@ h3 {
 
 .controls {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   padding: 16px;
 }
@@ -255,6 +255,29 @@ h3 {
 
 .button.danger {
   background: linear-gradient(135deg, #ef4444 0%, var(--danger) 100%);
+}
+
+.exportIconButton {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid #b8d7ec;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.exportIconButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(6, 78, 117, 0.12);
+}
+
+.exportIconButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .tableWrap {
