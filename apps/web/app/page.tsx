@@ -70,6 +70,13 @@ const debugEmployeeForm = (...args: unknown[]): void => {
   console.log('[EmployeeForm]', ...args);
 };
 
+interface EmployeeScreenState {
+  showEmployeeForm: boolean;
+  viewingEmployeeId: string | null;
+  editingEmployeeId: string | null;
+  form: EmployeeCreatePayload;
+}
+
 export default function HomePage() {
   const queryClient = useQueryClient();
   const {
@@ -96,11 +103,13 @@ export default function HomePage() {
   const [loginInfo, setLoginInfo] = useState('');
   const [form, setForm] = useState<EmployeeCreatePayload>(emptyForm);
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
+  const [viewingEmployeeId, setViewingEmployeeId] = useState<string | null>(null);
   const [nameSortOrder, setNameSortOrder] = useState<'asc' | 'desc'>('asc');
   const [recentlyUpdatedEmployeeId, setRecentlyUpdatedEmployeeId] = useState<string | null>(null);
   const [pendingScrollEmployeeId, setPendingScrollEmployeeId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+  const [preCreateScreenState, setPreCreateScreenState] = useState<EmployeeScreenState | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [showChangePasswordScreen, setShowChangePasswordScreen] = useState(false);
   const [changePasswordForm, setChangePasswordForm] = useState(changePasswordDefaults);
@@ -246,6 +255,7 @@ export default function HomePage() {
       employeeApi.update(session!.token, id, payload),
     onSuccess: async (updatedEmployee) => {
       clearEditing();
+      setViewingEmployeeId(null);
       setForm(emptyForm);
       setFormError('');
       setFormSuccess('');
@@ -318,7 +328,53 @@ export default function HomePage() {
   const isAdmin = session?.user.role === 'admin';
   const canCreateEmployee = isAdmin;
   const showPaginationControls = session?.user.role !== 'employee';
-  const isCreateMode = showEmployeeForm && !editingEmployeeId;
+  const isViewMode = Boolean(viewingEmployeeId) && !editingEmployeeId;
+  const isCreateMode = showEmployeeForm && !editingEmployeeId && !viewingEmployeeId;
+
+  const openCreateEmployee = () => {
+    if (!isCreateMode) {
+      setPreCreateScreenState({
+        showEmployeeForm,
+        viewingEmployeeId,
+        editingEmployeeId: editingEmployeeId ?? null,
+        form: { ...form },
+      });
+    }
+
+    setShowChangePasswordScreen(false);
+    setShowEmployeeForm(true);
+    clearEditing();
+    setViewingEmployeeId(null);
+    setForm(emptyForm);
+    setFormError('');
+    setFormSuccess('');
+  };
+
+  const onBackFromCreate = () => {
+    if (!preCreateScreenState) {
+      setShowEmployeeForm(false);
+      setViewingEmployeeId(null);
+      clearEditing();
+      setForm(emptyForm);
+      setFormError('');
+      setFormSuccess('');
+      return;
+    }
+
+    setShowEmployeeForm(preCreateScreenState.showEmployeeForm);
+    setViewingEmployeeId(preCreateScreenState.viewingEmployeeId);
+    setForm({ ...preCreateScreenState.form });
+    setFormError('');
+    setFormSuccess('');
+
+    if (preCreateScreenState.editingEmployeeId) {
+      startEditing(preCreateScreenState.editingEmployeeId);
+    } else {
+      clearEditing();
+    }
+
+    setPreCreateScreenState(null);
+  };
 
   const submitForm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -381,6 +437,7 @@ export default function HomePage() {
 
   const onEdit = (employee: Employee) => {
     setShowEmployeeForm(true);
+    setViewingEmployeeId(null);
     startEditing(employee.id);
     setForm({
       firstName: employee.firstName,
@@ -397,6 +454,38 @@ export default function HomePage() {
       active: employee.active ?? true,
       userId: employee.userId ?? null,
     });
+  };
+
+  const onView = (employee: Employee) => {
+    setShowEmployeeForm(true);
+    clearEditing();
+    setViewingEmployeeId(employee.id);
+    appBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setForm({
+      firstName: employee.firstName,
+      lastName: employee.lastName,
+      email: employee.email,
+      role: employee.role,
+      department: employee.department,
+      empId: employee.empId ?? '',
+      workingLocation: employee.workingLocation ?? '',
+      baseLocation: employee.baseLocation ?? '',
+      mobileNumber: employee.mobileNumber ?? '',
+      billable: employee.billable ?? false,
+      projectAllocation: employee.projectAllocation ?? 0,
+      active: employee.active ?? true,
+      userId: employee.userId ?? null,
+    });
+  };
+
+  const hideViewSection = () => {
+    if (!viewingEmployeeId) return;
+    setViewingEmployeeId(null);
+    setShowEmployeeForm(false);
+    setForm(emptyForm);
+    setFormError('');
+    setFormSuccess('');
   };
 
   useEffect(() => {
@@ -641,12 +730,18 @@ export default function HomePage() {
             className="input"
             placeholder="Search by name or email"
             value={q}
-            onChange={(event) => setQ(event.target.value)}
+            onChange={(event) => {
+              hideViewSection();
+              setQ(event.target.value);
+            }}
           />
           <select
             className="select"
             value={role}
-            onChange={(event) => setRole(event.target.value as '' | UserRole)}
+            onChange={(event) => {
+              hideViewSection();
+              setRole(event.target.value as '' | UserRole);
+            }}
           >
             <option value="">All roles</option>
             {roleOptions.map((item) => (
@@ -659,16 +754,27 @@ export default function HomePage() {
             className="input"
             placeholder="Filter by department"
             value={department}
-            onChange={(event) => setDepartment(event.target.value)}
+            onChange={(event) => {
+              hideViewSection();
+              setDepartment(event.target.value);
+            }}
           />
-          <button type="button" className="button secondary" onClick={resetFilters}>
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() => {
+              hideViewSection();
+              resetFilters();
+            }}
+          >
             Reset filters
           </button>
         </section>
       ) : null}
 
       <div className="grid" style={{ marginTop: 16 }}>
-        {canEdit && showEmployeeForm && (canCreateEmployee || Boolean(editingEmployeeId)) ? (
+        {showEmployeeForm &&
+        (isViewMode || (canEdit && (canCreateEmployee || Boolean(editingEmployeeId)))) ? (
           <section ref={employeeFormSectionRef} className="card">
             <form className="form" onSubmit={submitForm}>
               <div
@@ -679,7 +785,9 @@ export default function HomePage() {
                   gap: 8,
                 }}
               >
-                <h2 style={{ margin: 0 }}>{editingEmployeeId ? 'Edit Employee' : 'Add Employee'}</h2>
+                <h2 style={{ margin: 0 }}>
+                  {isViewMode ? 'View Employee' : editingEmployeeId ? 'Edit Employee' : 'Add Employee'}
+                </h2>
                 {!editingEmployeeId && formSuccess ? (
                   <span className="muted" style={{ color: '#166534', fontWeight: 600 }}>
                     {formSuccess}
@@ -691,6 +799,7 @@ export default function HomePage() {
                   className="input"
                   placeholder="First name"
                   value={form.firstName}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, firstName: event.target.value }))
                   }
@@ -699,6 +808,7 @@ export default function HomePage() {
                   className="input"
                   placeholder="Last name"
                   value={form.lastName}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, lastName: event.target.value }))
                   }
@@ -711,6 +821,7 @@ export default function HomePage() {
                     type="email"
                     placeholder="Email"
                     value={form.email}
+                    disabled={isViewMode}
                     onChange={(event) =>
                       setForm((prev) => ({ ...prev, email: event.target.value }))
                     }
@@ -720,6 +831,7 @@ export default function HomePage() {
                   className="input"
                   placeholder="Department"
                   value={form.department}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, department: event.target.value }))
                   }
@@ -730,12 +842,14 @@ export default function HomePage() {
                   className="input"
                   placeholder="Emp ID"
                   value={form.empId ?? ''}
+                  disabled={isViewMode}
                   onChange={(event) => setForm((prev) => ({ ...prev, empId: event.target.value }))}
                 />
                 <input
                   className="input"
                   placeholder="Working location"
                   value={form.workingLocation ?? ''}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, workingLocation: event.target.value }))
                   }
@@ -746,6 +860,7 @@ export default function HomePage() {
                   className="input"
                   placeholder="Base location"
                   value={form.baseLocation ?? ''}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, baseLocation: event.target.value }))
                   }
@@ -754,6 +869,7 @@ export default function HomePage() {
                   className="input"
                   placeholder="Mobile number"
                   value={form.mobileNumber ?? ''}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, mobileNumber: event.target.value }))
                   }
@@ -764,6 +880,7 @@ export default function HomePage() {
                   <input
                     type="checkbox"
                     checked={Boolean(form.billable)}
+                    disabled={isViewMode}
                     onChange={(event) =>
                       setForm((prev) => ({ ...prev, billable: event.target.checked }))
                     }
@@ -774,6 +891,7 @@ export default function HomePage() {
                   <input
                     type="checkbox"
                     checked={Boolean(form.active)}
+                    disabled={isViewMode}
                     onChange={(event) =>
                       setForm((prev) => ({ ...prev, active: event.target.checked }))
                     }
@@ -789,6 +907,7 @@ export default function HomePage() {
                   max={100}
                   placeholder="Project allocation (%)"
                   value={form.projectAllocation ?? 0}
+                  disabled={isViewMode}
                   onChange={(event) =>
                     setForm((prev) => ({
                       ...prev,
@@ -800,6 +919,7 @@ export default function HomePage() {
               <select
                 className="select"
                 value={form.role}
+                disabled={isViewMode}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, role: event.target.value as UserRole }))
                 }
@@ -811,29 +931,52 @@ export default function HomePage() {
                 ))}
               </select>
               {formError ? <div className="error">{formError}</div> : null}
-              <div className="formRow">
-                <button
-                  className="button"
-                  type="submit"
-                  disabled={createEmployee.isPending || updateEmployee.isPending}
-                >
-                  {editingEmployeeId ? 'Update employee' : 'Create employee'}
-                </button>
-                {editingEmployeeId ? (
+              {isViewMode ? (
+                <div className="formRow">
                   <button
                     className="button secondary"
                     type="button"
                     onClick={() => {
-                      clearEditing();
+                      setViewingEmployeeId(null);
                       setForm(emptyForm);
                       setFormError('');
                       setShowEmployeeForm(false);
                     }}
                   >
-                    Cancel edit
+                    Close
                   </button>
-                ) : null}
-              </div>
+                </div>
+              ) : (
+                <div className="formRow">
+                  <button
+                    className="button"
+                    type="submit"
+                    disabled={createEmployee.isPending || updateEmployee.isPending}
+                  >
+                    {editingEmployeeId ? 'Update employee' : 'Create employee'}
+                  </button>
+                  {isCreateMode ? (
+                    <button className="button secondary" type="button" onClick={onBackFromCreate}>
+                      Back
+                    </button>
+                  ) : null}
+                  {editingEmployeeId ? (
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() => {
+                        clearEditing();
+                        setViewingEmployeeId(null);
+                        setForm(emptyForm);
+                        setFormError('');
+                        setShowEmployeeForm(false);
+                      }}
+                    >
+                      Cancel edit
+                    </button>
+                  ) : null}
+                </div>
+              )}
             </form>
           </section>
         ) : null}
@@ -896,6 +1039,13 @@ export default function HomePage() {
                   <td>{employee.active ? 'Yes' : 'No'}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="button secondary"
+                        onClick={() => onView(employee)}
+                      >
+                        View
+                      </button>
                       {canEdit ? (
                         <button
                           type="button"
@@ -1098,6 +1248,8 @@ export default function HomePage() {
                     onClick={() => {
                       setShowChangePasswordScreen(false);
                       clearEditing();
+                      setViewingEmployeeId(null);
+                      setPreCreateScreenState(null);
                       setForm(emptyForm);
                       setFormError('');
                       setFormSuccess('');
@@ -1111,14 +1263,7 @@ export default function HomePage() {
                   <button
                     type="button"
                     className="navItem"
-                    onClick={() => {
-                      setShowChangePasswordScreen(false);
-                      setShowEmployeeForm(true);
-                      clearEditing();
-                      setForm(emptyForm);
-                      setFormError('');
-                      setFormSuccess('');
-                    }}
+                    onClick={openCreateEmployee}
                   >
                     Create Employee
                   </button>
