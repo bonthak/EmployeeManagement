@@ -281,7 +281,13 @@ h3 {
 }
 
 .tableWrap {
+  overflow: hidden;
+}
+
+.tableScroll {
+  max-height: min(58vh, 560px);
   overflow-x: auto;
+  overflow-y: auto;
 }
 
 .table {
@@ -303,6 +309,9 @@ h3 {
   font-size: 0.86rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .tableHeadSort {

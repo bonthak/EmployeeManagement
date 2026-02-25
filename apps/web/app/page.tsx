@@ -1065,110 +1065,112 @@ export default function HomePage() {
 
         {!isCreateMode ? (
           <section className="card tableWrap">
-          <table className="table" aria-label="Employees list">
-            <thead>
-              <tr>
-                <th>
-                  <div className="tableHeadSort">
-                    <button
-                      type="button"
-                      className={`sortIconButton ${nameSortOrder === 'desc' ? 'active' : ''}`}
-                      aria-label="Sort name descending"
-                      onClick={() => setNameSortOrder('desc')}
-                    >
-                      <Image src="/art/sort-desc.svg" alt="" width={14} height={14} />
-                    </button>
-                    <span>Name</span>
-                    <button
-                      type="button"
-                      className={`sortIconButton ${nameSortOrder === 'asc' ? 'active' : ''}`}
-                      aria-label="Sort name ascending"
-                      onClick={() => setNameSortOrder('asc')}
-                    >
-                      <Image src="/art/sort-asc.svg" alt="" width={14} height={14} />
-                    </button>
-                  </div>
-                </th>
-                <th>Email</th>
-                <th>Department</th>
-                <th>Role</th>
-                <th>Billable</th>
-                <th>Project Allocation (%)</th>
-                <th>Active</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {employeesQuery.isLoading ? (
-                <tr>
-                  <td colSpan={8}>Loading employees...</td>
-                </tr>
-              ) : null}
-              {rows.map((employee) => (
-                <tr
-                  key={employee.id}
-                  data-employee-id={employee.id}
-                  className={employee.id === recentlyUpdatedEmployeeId ? 'rowUpdated' : undefined}
-                >
-                  <td>
-                    {employee.firstName} {employee.lastName}
-                  </td>
-                  <td>{employee.email}</td>
-                  <td>{employee.department}</td>
-                  <td>{employee.role}</td>
-                  <td>{employee.billable ? 'Yes' : 'No'}</td>
-                  <td>{employee.projectAllocation}%</td>
-                  <td>{employee.active ? 'Yes' : 'No'}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        type="button"
-                        className="button secondary"
-                        onClick={() => onView(employee)}
-                      >
-                        View
-                      </button>
-                      {canEdit ? (
+            <div className="tableScroll">
+              <table className="table" aria-label="Employees list">
+                <thead>
+                  <tr>
+                    <th>
+                      <div className="tableHeadSort">
                         <button
                           type="button"
-                          className="button secondary"
-                          onClick={() => onEdit(employee)}
+                          className={`sortIconButton ${nameSortOrder === 'desc' ? 'active' : ''}`}
+                          aria-label="Sort name descending"
+                          onClick={() => setNameSortOrder('desc')}
                         >
-                          Edit
+                          <Image src="/art/sort-desc.svg" alt="" width={14} height={14} />
                         </button>
-                      ) : null}
-                      {canDelete ? (
+                        <span>Name</span>
                         <button
                           type="button"
-                          className="button danger"
-                          onClick={() => deleteEmployee.mutate(employee.id)}
-                          disabled={deleteEmployee.isPending}
+                          className={`sortIconButton ${nameSortOrder === 'asc' ? 'active' : ''}`}
+                          aria-label="Sort name ascending"
+                          onClick={() => setNameSortOrder('asc')}
                         >
-                          Delete
+                          <Image src="/art/sort-asc.svg" alt="" width={14} height={14} />
                         </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {!employeesQuery.isLoading && rows.length === 0 ? (
-                <tr>
-                  <td colSpan={8}>
-                    <div className="emptyState">
-                      <Image
-                        src="/art/empty-employees.svg"
-                        alt="No matching employees"
-                        width={340}
-                        height={220}
-                        className="emptyStateImage"
-                      />
-                      <div>No employees match your filter.</div>
-                    </div>
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+                      </div>
+                    </th>
+                    <th>Email</th>
+                    <th>Department</th>
+                    <th>Role</th>
+                    <th>Billable</th>
+                    <th>Project Allocation (%)</th>
+                    <th>Active</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employeesQuery.isLoading ? (
+                    <tr>
+                      <td colSpan={8}>Loading employees...</td>
+                    </tr>
+                  ) : null}
+                  {rows.map((employee) => (
+                    <tr
+                      key={employee.id}
+                      data-employee-id={employee.id}
+                      className={employee.id === recentlyUpdatedEmployeeId ? 'rowUpdated' : undefined}
+                    >
+                      <td>
+                        {employee.firstName} {employee.lastName}
+                      </td>
+                      <td>{employee.email}</td>
+                      <td>{employee.department}</td>
+                      <td>{employee.role}</td>
+                      <td>{employee.billable ? 'Yes' : 'No'}</td>
+                      <td>{employee.projectAllocation}%</td>
+                      <td>{employee.active ? 'Yes' : 'No'}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button
+                            type="button"
+                            className="button secondary"
+                            onClick={() => onView(employee)}
+                          >
+                            View
+                          </button>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              className="button secondary"
+                              onClick={() => onEdit(employee)}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                          {canDelete ? (
+                            <button
+                              type="button"
+                              className="button danger"
+                              onClick={() => deleteEmployee.mutate(employee.id)}
+                              disabled={deleteEmployee.isPending}
+                            >
+                              Delete
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {!employeesQuery.isLoading && rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8}>
+                        <div className="emptyState">
+                          <Image
+                            src="/art/empty-employees.svg"
+                            alt="No matching employees"
+                            width={340}
+                            height={220}
+                            className="emptyStateImage"
+                          />
+                          <div>No employees match your filter.</div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
 
           {showPaginationControls ? (
             <div
